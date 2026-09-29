@@ -4,9 +4,13 @@
   "package": "dev.mccli.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "AbstractContainerScreenAccessor",
     "ChatHudMixin",
     "ClientCommonNetworkHandlerMixin",
     "DisconnectedScreenMixin",
+    "KeyboardHandlerInvoker",
+    "MouseHandlerInvoker",
+    "MouseMoveInvoker",
     "MouseMixin",
     "WindowMixin",
     "headless.HeadlessBackendInitMixin",

@@ -58,6 +58,7 @@ public class CommandDispatcher {
 
         // World management commands
         register(new WorldCommand());
+        register(new InputCommand());
 
         McCliMod.LOGGER.info("Registered {} commands", commands.size());
     }
