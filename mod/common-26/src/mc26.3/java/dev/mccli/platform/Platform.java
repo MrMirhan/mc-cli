@@ -1,5 +1,8 @@
 package dev.mccli.platform;
 
+import dev.mccli.mixin.MouseMoveInvoker;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.MouseHandler;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.InteractionHand;
 import org.lwjgl.sdl.SDLVideo;
@@ -47,5 +50,11 @@ public final class Platform {
     /** Swing the main hand for an attack/left-click action, as vanilla does. */
     public static void swingAttack(LocalPlayer player) {
         player.swing(InteractionHand.MAIN_HAND, player.getMainHandItem().getAttackAnimation(), false);
+    }
+
+    /** Move the cursor to window coordinates through the window's own cursor callback. */
+    public static void moveCursor(Minecraft client, long windowHandle, double x, double y) {
+        MouseHandler mouse = client.mouseHandler;
+        ((MouseMoveInvoker) mouse).mccli$onMove(windowHandle, x, y, x - mouse.xpos(), y - mouse.ypos());
     }
 }
