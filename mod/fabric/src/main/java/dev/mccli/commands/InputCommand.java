@@ -12,6 +12,7 @@ import dev.mccli.util.McNames;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
+import net.minecraft.client.input.CharInput;
 import net.minecraft.client.input.KeyInput;
 import net.minecraft.client.input.MouseInput;
 import net.minecraft.client.util.InputUtil;
@@ -33,6 +34,8 @@ import java.util.concurrent.CompletableFuture;
  *   modifiers (GLFW bits, 1 = shift); handled by the open screen exactly like a real click
  * - key: key (GLFW code, or a name such as "tab", "f3", "escape", "e", "left.shift"), mode tap|press|release,
  *   modifiers
+ * - type: text; one character event per code point, as GLFW sends while typing (no key presses, so send key
+ *   enter or backspace separately); goes to the open screen's focused field: chat, sign, anvil, book
  * - slots: the open container's slots with index, GUI position, centre and item
  * - slot_click: slot, button, type (pickup, quick_move, swap, clone, throw, quick_craft, pickup_all); sends the
  *   click the way ClientPlayerInteractionManager.clickSlot does, without moving the cursor
@@ -54,10 +57,11 @@ public class InputCommand implements Command {
             case "mouse_move" -> MainThreadExecutor.submit(() -> mouseMove(params));
             case "mouse_click" -> MainThreadExecutor.submit(() -> mouseClick(params));
             case "key" -> MainThreadExecutor.submit(() -> key(params));
+            case "type" -> MainThreadExecutor.submit(() -> type(params));
             case "slots" -> MainThreadExecutor.submit(InputCommand::slots);
             case "slot_click" -> MainThreadExecutor.submit(() -> slotClick(params));
             default -> CompletableFuture.failedFuture(new IllegalArgumentException(
-                "Unknown input action '" + action + "'. Use mouse_move, mouse_click, key, slots or slot_click"));
+                "Unknown input action '" + action + "'. Use mouse_move, mouse_click, key, type, slots or slot_click"));
         };
     }
 
@@ -138,6 +142,29 @@ public class InputCommand implements Command {
         response.addProperty("key", code);
         response.addProperty("mode", mode);
         response.addProperty("screen_before", before);
+        response.addProperty("screen", screenName(client.currentScreen));
+        return response;
+    }
+
+    private static JsonObject type(JsonObject params) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (!params.has("text")) {
+            throw new IllegalArgumentException("text is required");
+        }
+        String text = params.get("text").getAsString();
+        Screen screen = client.currentScreen;
+        if (screen == null) {
+            throw new IllegalStateException("No screen is open to type into; open chat (key t) or a sign, anvil or book first");
+        }
+        KeyboardInvoker keyboard = (KeyboardInvoker) client.keyboard;
+        long handle = client.getWindow().getHandle();
+        int[] codepoints = text.codePoints().toArray();
+        for (int codepoint : codepoints) {
+            keyboard.mccli$onChar(handle, new CharInput(codepoint, 0));
+        }
+        JsonObject response = new JsonObject();
+        response.addProperty("chars", codepoints.length);
+        response.addProperty("screen_before", screenName(screen));
         response.addProperty("screen", screenName(client.currentScreen));
         return response;
     }
