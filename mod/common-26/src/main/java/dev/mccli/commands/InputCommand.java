@@ -75,9 +75,10 @@ public class InputCommand implements Command {
 
     private static JsonObject moveTo(Minecraft client, double guiX, double guiY) {
         Window window = client.getWindow();
-        // the inverse of MouseHandler.getScaledXPos/YPos (window pixels * GUI size / window size)
-        double x = guiX * window.getWidth() / window.getGuiScaledWidth();
-        double y = guiY * window.getHeight() / window.getGuiScaledHeight();
+        // the inverse of MouseHandler.getScaledXPos/YPos, which divide by the screen size, not the framebuffer size
+        // (they differ on HiDPI displays, so using the framebuffer size lands clicks twice as far out)
+        double x = guiX * window.getScreenWidth() / window.getGuiScaledWidth();
+        double y = guiY * window.getScreenHeight() / window.getGuiScaledHeight();
         Platform.moveCursor(client, ClientCompat.windowHandle(client), x, y);
         JsonObject response = new JsonObject();
         response.addProperty("gui_x", guiX);
