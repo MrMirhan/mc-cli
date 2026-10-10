@@ -20,6 +20,7 @@ public class CommandDispatcher {
     public CommandDispatcher() {
         // Core commands
         register(new StatusCommand());
+        register(new PlayersCommand());
         register(new TeleportCommand());
         register(new CameraCommand());
         register(new TimeCommand());
