@@ -1,0 +1,81 @@
+package dev.mccli.commands;
+
+import com.google.gson.JsonObject;
+import dev.mccli.camera.CameraMotionJson;
+import dev.mccli.util.MainThreadExecutor;
+import dev.mccli.util.TerrainWait;
+import dev.mccli.video.FfmpegLocator;
+import dev.mccli.video.RecordParams;
+import dev.mccli.video.Recorder;
+import net.minecraft.client.Minecraft;
+
+import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
+
+/**
+ * Real-time video of the game frame and its sound, encoded by ffmpeg on this computer.
+ *
+ * Params:
+ * - action: start | stop | status
+ * start:
+ * - path: absolute .mp4 path (required)
+ * - preset: max | high (default) | balanced | light; fps, resolution, codec (h264|h265), crf, speed, audio, audioBitrate
+ * - hud: keep the HUD in the video (default false)
+ * - camera: a camera motion, see the camera command (orbit / path); it starts with the first frame
+ * - duration_ms: stop after this long (default: the camera motion's length); max_seconds: hard limit (default 120)
+ * - wait: return when the video is written (needs duration_ms or camera)
+ * - wait_for_terrain: wait until the view is built before the first frame (default true)
+ *
+ * stop / a wait:true start return: path, durationMs, fps, width, height, frames, droppedFrames, duplicatedFrames, audio, sizeBytes.
+ */
+public class RecordCommand implements Command {
+    @Override
+    public String getName() {
+        return "record";
+    }
+
+    @Override
+    public CompletableFuture<JsonObject> execute(JsonObject params) {
+        String action = params.has("action") ? params.get("action").getAsString() : "status";
+        return switch (action) {
+            case "status" -> MainThreadExecutor.submit(Recorder.INSTANCE::status);
+            case "stop" -> MainThreadExecutor.submit(Recorder.INSTANCE::stop).thenCompose(f -> f);
+            case "start" -> start(params);
+            default -> CompletableFuture.failedFuture(new IllegalArgumentException("action must be start, stop or status"));
+        };
+    }
+
+    private CompletableFuture<JsonObject> start(JsonObject p) {
+        JsonObject camera = p.has("camera") && p.get("camera").isJsonObject() ? p.getAsJsonObject("camera") : null;
+        try {
+            RecordParams.parse(p, camera == null ? null : CameraMotionJson.parse(camera, null));
+        } catch (RuntimeException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Path ffmpeg = FfmpegLocator.require();
+                RecordParams params = MainThreadExecutor.submit(() -> {
+                    Minecraft mc = Minecraft.getInstance();
+                    if (mc.player == null) throw new IllegalStateException("Player not in game");
+                    RecordParams rp = RecordParams.parse(p, camera == null ? null : CameraMotionJson.parse(camera, CameraCommand.currentPose(mc)));
+                    Recorder.INSTANCE.prepare(rp, ffmpeg);
+                    return rp;
+                }).get();
+                JsonObject started;
+                try {
+                    if (params.waitForTerrain()) TerrainWait.sectionsBuilt(5000);
+                    started = MainThreadExecutor.submit(Recorder.INSTANCE::begin).get();
+                } catch (Exception e) {
+                    MainThreadExecutor.submitVoid(Recorder.INSTANCE::abort).get();
+                    throw e;
+                }
+                if (!params.waitForEnd()) return started;
+                return MainThreadExecutor.submit(Recorder.INSTANCE::done).get().get();
+            } catch (Exception e) {
+                Throwable cause = e instanceof java.util.concurrent.ExecutionException && e.getCause() != null ? e.getCause() : e;
+                throw cause instanceof RuntimeException r ? r : new RuntimeException(cause.getMessage(), cause);
+            }
+        });
+    }
+}

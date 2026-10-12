@@ -23,6 +23,7 @@ public class CommandDispatcher {
         register(new PlayersCommand());
         register(new TeleportCommand());
         register(new CameraCommand());
+        register(new RecordCommand());
         register(new TimeCommand());
         register(new ExecuteCommand());
 
