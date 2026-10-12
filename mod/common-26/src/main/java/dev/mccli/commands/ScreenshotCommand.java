@@ -12,6 +12,9 @@ import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.multiplayer.ClientLevel;
 import dev.mccli.util.ClientCompat;
+import dev.mccli.util.TerrainWait;
+import dev.mccli.camera.CameraOverride;
+import java.util.function.Supplier;
 
 import java.io.File;
 import java.io.IOException;
@@ -26,6 +29,8 @@ import java.util.concurrent.CompletableFuture;
  * - clean: hide HUD before capture (default: false)
  * - delay_ms: delay before capture in milliseconds (default: 0)
  * - settle_ms: additional delay after cleanup (default: 200 when clean)
+ * - camera: render from this camera without moving the player, then put the camera back. A pose {x,y,z,yaw,pitch}
+ *   or any camera command action object, e.g. {action:"frame_area", area:{min,max}, yaw, pitch}
  *
  * Response:
  * - path: saved file path
@@ -51,11 +56,51 @@ public class ScreenshotCommand implements Command {
         int delayMs = params.has("delay_ms") ? params.get("delay_ms").getAsInt() : 0;
         int settleMs = params.has("settle_ms") ? params.get("settle_ms").getAsInt() : (clean ? 200 : 0);
 
+        if (params.has("camera") && params.get("camera").isJsonObject()) {
+            return withCamera(params.getAsJsonObject("camera"), clean ? () -> takeScreenshotWithOptions(path, true, delayMs, settleMs) : () -> takeScreenshot(path));
+        }
+
         if (!clean && delayMs == 0) {
             return takeScreenshot(path);
         }
 
         return takeScreenshotWithOptions(path, clean, delayMs, settleMs);
+    }
+
+    private CompletableFuture<JsonObject> withCamera(JsonObject camera, Supplier<CompletableFuture<JsonObject>> shot) {
+        return CompletableFuture.supplyAsync(() -> {
+            CameraOverride.Pose previous = null;
+            boolean applied = false;
+            try {
+                previous = MainThreadExecutor.submit(() -> {
+                    CameraOverride.Pose before = CameraOverride.INSTANCE.get();
+                    CameraCommand.handle(camera);
+                    return before;
+                }).get();
+                applied = true;
+                TerrainWait.sectionsBuilt(5000);
+                JsonObject result = shot.get().get();
+                result.add("camera", MainThreadExecutor.submit(() -> CameraCommand.handle(statusAction())).get());
+                return result;
+            } catch (Exception e) {
+                Throwable cause = e instanceof java.util.concurrent.ExecutionException && e.getCause() != null ? e.getCause() : e;
+                throw cause instanceof RuntimeException r ? r : new RuntimeException(cause.getMessage(), cause);
+            } finally {
+                if (applied) {
+                    CameraOverride.Pose restore = previous;
+                    MainThreadExecutor.submitVoid(() -> {
+                        if (restore == null) CameraOverride.INSTANCE.clear();
+                        else CameraOverride.INSTANCE.set(restore);
+                    });
+                }
+            }
+        });
+    }
+
+    private static JsonObject statusAction() {
+        JsonObject o = new JsonObject();
+        o.addProperty("action", "status");
+        return o;
     }
 
     private CompletableFuture<JsonObject> takeScreenshotWithOptions(String path, boolean clean, int delayMs, int settleMs) {

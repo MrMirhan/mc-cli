@@ -37,6 +37,7 @@ Differences on Minecraft 26.x:
 | `resourcepack list\|enabled\|enable\|disable\|reload` | Resource pack management |
 | `chat send\|history\|clear` | Chat messaging and history |
 | `capture -o path [--clean]` | Take screenshot |
+| `record` (protocol) | Record an MP4 with sound, optionally along a camera orbit or path |
 | `analyze path` | Analyze screenshot |
 | `compare a b` | Compare screenshots |
 | `perf` | Performance metrics |
@@ -171,23 +172,60 @@ mccli teleport 100 64 -200 --json
 
 ## camera
 
-Set camera/player view direction.
+Without `action`: turn the player (yaw, pitch). With `action`: a render-only camera. The player does not move; the
+camera renders from its own pose and draws the player's body, like third person. Keep it within render distance of
+the player, or the far chunks are not drawn (the response then carries a `warning`).
 
 ```bash
 mccli camera -45 15
 ```
 
-**Arguments:**
-- `yaw` - Horizontal rotation (-180 to 180)
-- `pitch` - Vertical rotation (-90 to 90)
+| action | parameters |
+|---|---|
+| `set` | `x`, `y`, `z`, `yaw`, `pitch` (an omitted value keeps the current one) |
+| `look_at` | `target` `{x,y,z}` |
+| `frame_area` | `area` `{min:{x,y,z}, max:{x,y,z}}`, `yaw`, `pitch` (default 30), `distance_scale` (default 1) |
+| `frame_entity` | `entity` (UUID or exact name), `yaw`, `pitch`, `distance_scale` |
+| `orbit` | `center` `{x,y,z}`, `radius`, `durationMs`, `height` (default radius/2), `startAngle` (default: where the camera is), `degrees` (default 360), `ease` (`none` or `inOut`) |
+| `path` | `keyframes` `[{t,x,y,z,yaw,pitch}]` (`t` in ms, 2-64 keyframes), `lookAt` `{x,y,z}` (then yaw/pitch may be left out), `interpolation` (`smooth` or `linear`), `ease` (`inOut` or `none`) |
+| `freecam_on` | freeze the camera where it is |
+| `reset` / `freecam_off` | back to the player's view |
+| `status` | the current pose |
 
-**Response:**
+Orbit and path are played from the wall clock, so a slow frame skips ahead instead of stuttering.
+
+**Response:** `{active, x, y, z, yaw, pitch, motion?: {kind, durationMs}, warning?}`
+
+---
+
+## record
+
+Real-time video of the game frame and its sound, encoded to MP4 by ffmpeg on the game's computer (`MCCLI_FFMPEG`
+overrides the lookup). The video has the window's resolution: size the window first.
+
 ```json
-{
-  "yaw": -45.0,
-  "pitch": 15.0
-}
+{"command": "record", "params": {"action": "start", "path": "/abs/clips/orbit.mp4", "preset": "high", "wait": true,
+  "camera": {"action": "orbit", "center": {"x": 120, "y": 70, "z": -40}, "radius": 30, "height": 12, "durationMs": 12000}}}
 ```
+
+| parameter | meaning |
+|---|---|
+| `action` | `start`, `stop` or `status` |
+| `path` | absolute `.mp4` path (start) |
+| `preset` | `max` (crf 16, slow, 60 fps), `high` (default; crf 20, medium, 30 fps), `balanced` (crf 23, veryfast, 30 fps), `light` (crf 28, veryfast, 30 fps, 720p) |
+| `fps`, `resolution`, `codec`, `crf`, `speed`, `audio`, `audioBitrate` | override one preset value (`resolution`: `source`, `2160p` ... `480p`; `codec`: `h264` or `h265`) |
+| `hud` | keep the HUD (default false: hidden like F1; open menus still draw) |
+| `camera` | an `orbit` or `path` object as in `camera`; it starts with the first frame and sets the length |
+| `duration_ms`, `max_seconds` | stop after this long; hard limit (default 120, at most 600) |
+| `wait` | return when the file is written (needs `duration_ms` or `camera`) |
+| `wait_for_terrain` | wait until the view is built before the first frame (default true) |
+
+Sound comes from an OpenAL loopback device, so nothing plays through the speakers while it records, and a headless
+client records sound too. Sound sources are heard from the camera's position.
+
+**Response (stop, or a `wait` start):** `{savedPath, reason, durationMs, fps, width, height, frames, duplicatedFrames,
+droppedFrames, audio, codec, preset, crf, speed, sizeBytes, encodeMs, note?}`. `droppedFrames` above 0 means the
+encoder fell behind: use a faster preset, a lower fps or a lower resolution.
 
 ---
 
@@ -511,6 +549,9 @@ mccli capture -o screenshot.png --clean --delay 500 --settle 300
 - `--clean` - Hide HUD before capture
 - `--delay` - Delay before capture in ms (default: 0)
 - `--settle` - Settle time after cleanup in ms (default: 200)
+- `camera` (protocol parameter of `screenshot`) - render from this camera without moving the player, then put the camera
+  back: a pose `{x,y,z,yaw,pitch}` or any `camera` action object, e.g. `{action:"frame_area", area:{min,max}, pitch:25}`.
+  The shot waits until the terrain in view is built.
 
 **Response:**
 ```json
