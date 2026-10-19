@@ -2,6 +2,7 @@ package dev.mccli.util;
 
 import com.mojang.blaze3d.platform.Window;
 import dev.mccli.McCliMod;
+import dev.mccli.mixin.headless.WindowAccess;
 import dev.mccli.platform.Platform;
 import net.minecraft.client.Minecraft;
 import net.minecraft.sounds.SoundSource;
@@ -140,22 +141,18 @@ public final class HeadlessMode {
     }
 
     /**
-     * Resize the (hidden) window so that its framebuffer is WIDTH x HEIGHT, taking the display
-     * pixel density into account (e.g. a 640x360 window on a 2x Retina display).
+     * Re-read the framebuffer size (WIDTH x HEIGHT while hidden, see HeadlessWindowMixin; the real window
+     * otherwise) and resize the render targets and the GUI to it. The window itself is never resized, so
+     * the screen size of the computer does not limit the frame.
      */
     private static void applyFramebufferSize(Minecraft client) {
         Window window = client.getWindow();
         if (window == null || client.options == null || client.options.fullscreen().get()) {
             return;
         }
-        int screenW = Math.max(1, window.getScreenWidth());
-        int fbW = Math.max(1, window.getWidth());
-        double scale = Math.max(1.0, (double) fbW / screenW);
-        int targetW = (int) Math.round(WIDTH / scale);
-        int targetH = (int) Math.round(HEIGHT / scale);
-        if (targetW != screenW || targetH != window.getScreenHeight()) {
-            Platform.setWindowSize(window.handle(), targetW, targetH);
-        }
+        ((WindowAccess) (Object) window).mccli$refreshFramebufferSize();
+        client.framebufferSizeChanged();
+        client.resizeGui();
     }
 
     /** Hide the window and enter headless mode at runtime. Must run on the main thread. */
@@ -171,6 +168,7 @@ public final class HeadlessMode {
             Platform.hideWindow(handle);
         }
         MacosApp.makeBackgroundApp();
+        applyFramebufferSize(client);
         McCliMod.LOGGER.info("[headless] Window hidden");
     }
 
@@ -188,6 +186,7 @@ public final class HeadlessMode {
             Platform.showWindow(handle);
             Platform.raiseWindow(handle);
         }
+        applyFramebufferSize(client);
         McCliMod.LOGGER.info("[headless] Window shown");
     }
 

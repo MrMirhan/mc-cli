@@ -26,7 +26,8 @@
     "headless.HeadlessOptionsMixin",
     "headless.HeadlessPauseMixin",
     "headless.HeadlessShowMixin",
-    "headless.HeadlessWindowMixin"
+    "headless.HeadlessWindowMixin",
+    "headless.WindowAccess"
   ],
   "injectors": {
     "defaultRequire": 1

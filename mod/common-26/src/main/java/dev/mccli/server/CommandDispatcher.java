@@ -24,6 +24,7 @@ public class CommandDispatcher {
         register(new TeleportCommand());
         register(new CameraCommand());
         register(new RecordCommand());
+        register(new ReplayCommand());
         register(new TimeCommand());
         register(new ExecuteCommand());
 

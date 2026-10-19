@@ -191,6 +191,7 @@ public class WindowCommand implements Command {
      * - headless: boolean (window hidden by headless mode)
      * - visible: boolean (OS-level window visibility)
      * - focused, headless_at_startup, headless_fps, sound_muted, framebuffer_width, framebuffer_height
+     * - window_width, window_height: the real window in screen units (while headless the frame does not follow it)
      */
     private CompletableFuture<JsonObject> handleStatus() {
         return MainThreadExecutor.submit(() -> buildStatus(Minecraft.getInstance()));
@@ -217,6 +218,8 @@ public class WindowCommand implements Command {
         if (client.getWindow() != null) {
             response.addProperty("framebuffer_width", client.getWindow().getWidth());
             response.addProperty("framebuffer_height", client.getWindow().getHeight());
+            response.addProperty("window_width", client.getWindow().getScreenWidth());
+            response.addProperty("window_height", client.getWindow().getScreenHeight());
         }
 
         return response;
