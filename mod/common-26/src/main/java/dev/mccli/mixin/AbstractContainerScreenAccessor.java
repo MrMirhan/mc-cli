@@ -20,4 +20,7 @@ public interface AbstractContainerScreenAccessor {
 
     @Accessor("imageHeight")
     int mccli$getImageHeight();
+
+    @Accessor("hoveredSlot")
+    net.minecraft.world.inventory.@org.jspecify.annotations.Nullable Slot mccli$getHoveredSlot();
 }
