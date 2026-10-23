@@ -74,6 +74,19 @@ While control is in use the player sees a badge in the top right corner (never i
 pauses every command (`CONTROL_PAUSED`) until pressed again. `{"command": "control"}` returns
 `{mode, allow, paused, consent}` in every mode.
 
+## MCP (26.x)
+
+The game is also an MCP server: streamable HTTP with JSON responses at `http://127.0.0.1:25590/mcp`
+(`MCCLI_MCP_PORT`, `0` turns it off; `MCCLI_BIND` applies). Send `Authorization: Bearer <token>`. Requests with an
+`Origin` header other than localhost are refused, so a web page cannot drive the game. Every command is a tool with
+the same name and parameters; the same player permissions apply (a refusal comes back as a tool error with the
+`CONTROL_*` code). `screenshot` also returns the image. `~/.mccli/instances.json` lists `mcpPort` per game.
+
+```json
+{"mcpServers": {"minecraft-client": {"type": "http", "url": "http://127.0.0.1:25590/mcp",
+  "headers": {"Authorization": "Bearer <contents of config/mccli-token>"}}}}
+```
+
 ## Response Format
 
 ### Success
