@@ -227,6 +227,12 @@ overrides the lookup). The video has the window's resolution: size the window fi
 | `duration_ms`, `max_seconds` | stop after this long; hard limit (default 120, at most 600) |
 | `wait` | return when the file is written (needs `duration_ms` or `camera`) |
 | `wait_for_terrain` | wait until the view is built before the first frame (default true) |
+| `render` (26.x) | `true`: frame-exact. The camera clock steps 1/fps per captured frame, so heavy shaders never skip or repeat a frame. No sound (add music in the edit); needs `duration_ms` or `camera` |
+| `motion_blur`, `shutter` (26.x) | with `render`: sub-frames per frame (1-16) and the open part of each frame (0-1, default 0.5 = 180°). 8 at 60 fps renders 480 frames per second of video |
+
+Render mode moves only the camera on the frame clock. The world (mobs, water, particles, day time) keeps real time,
+so a render slower than real time shows them sped up: use it for camera moves over builds, or freeze the world on a
+test server first.
 
 Sound comes from an OpenAL loopback device, so nothing plays through the speakers while it records, and a headless
 client records sound too. Sound sources are heard from the camera's position.
