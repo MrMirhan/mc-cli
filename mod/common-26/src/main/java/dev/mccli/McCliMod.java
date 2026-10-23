@@ -2,6 +2,7 @@ package dev.mccli;
 
 import dev.mccli.control.ControlRuntime;
 import dev.mccli.events.EventLog;
+import dev.mccli.server.McpServer;
 import dev.mccli.server.SocketServer;
 import dev.mccli.util.HeadlessMode;
 import dev.mccli.util.LogCaptureAppender;
@@ -43,6 +44,7 @@ public final class McCliMod {
     public static final int DEFAULT_PORT = 25580;
 
     private static SocketServer server;
+    private static McpServer mcp;
     private static LogCaptureAppender logAppender;
     private static boolean initialized;
 
@@ -66,6 +68,9 @@ public final class McCliMod {
         installLogCapture();
         ControlRuntime.init(configDir);
 
+        // MCP first, so the socket server's registry entry carries its port
+        mcp = new McpServer();
+        mcp.start();
         // Start TCP server with dynamic port allocation
         server = new SocketServer(DEFAULT_PORT);
         server.start();
@@ -74,6 +79,9 @@ public final class McCliMod {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             if (server != null) {
                 server.stop();
+            }
+            if (mcp != null) {
+                mcp.stop();
             }
             uninstallLogCapture();
         }));

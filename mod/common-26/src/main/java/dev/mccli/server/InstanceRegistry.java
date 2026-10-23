@@ -42,6 +42,8 @@ public class InstanceRegistry {
         public String tokenFile;
         /** off, ask or on (config/mccli.json). */
         public String control;
+        /** http://127.0.0.1:{mcpPort}/mcp, or -1 when the MCP server is off. */
+        public int mcpPort;
 
         public Instance() {}
 
@@ -55,6 +57,7 @@ public class InstanceRegistry {
             var token = dev.mccli.control.ControlRuntime.token();
             this.tokenFile = token != null && token.file() != null ? token.file().toAbsolutePath().toString() : null;
             this.control = dev.mccli.control.ControlRuntime.policy().mode().name().toLowerCase(java.util.Locale.ROOT);
+            this.mcpPort = McpServer.port();
         }
     }
 
