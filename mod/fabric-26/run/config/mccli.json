@@ -1,0 +1,8 @@
+{
+  "remoteControl": "on",
+  "allow": [
+    "observe",
+    "input",
+    "world"
+  ]
+}
