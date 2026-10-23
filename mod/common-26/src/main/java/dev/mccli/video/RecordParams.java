@@ -25,7 +25,7 @@ public record RecordParams(Path savePath, VideoSettings settings, boolean hud, L
         VideoSettings settings = VideoSettings.parse(p);
         int maxSeconds = p.has("max_seconds") ? p.get("max_seconds").getAsInt() : 120;
         if (maxSeconds < 1 || maxSeconds > MAX_SECONDS) throw new IllegalArgumentException("max_seconds must be 1-" + MAX_SECONDS);
-        Long duration = p.has("duration_ms") ? Math.round(p.get("duration_ms").getAsDouble()) : motion == null ? null : motion.durationMs();
+        Long duration = p.has("duration_ms") ? Math.round(p.get("duration_ms").getAsDouble()) : motion == null || motion.durationMs() <= 0 ? null : motion.durationMs();
         if (duration != null && duration < 100) throw new IllegalArgumentException("duration_ms must be at least 100");
         if (duration != null && duration > maxSeconds * 1000L) {
             throw new IllegalArgumentException("duration_ms is longer than max_seconds (" + maxSeconds + " s); raise max_seconds (at most " + MAX_SECONDS + ")");
