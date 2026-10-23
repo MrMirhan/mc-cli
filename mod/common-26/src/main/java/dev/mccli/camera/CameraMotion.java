@@ -15,6 +15,11 @@ public interface CameraMotion {
         return null;
     }
 
+    /** The camera roll in degrees at {@code ms} (positive banks the picture clockwise), or null for none. */
+    default Double rollAt(double ms) {
+        return null;
+    }
+
     /** Smoothstep: zero speed at both ends, the middle stays in the middle. */
     static double easeInOut(double f) {
         return f * f * (3 - 2 * f);

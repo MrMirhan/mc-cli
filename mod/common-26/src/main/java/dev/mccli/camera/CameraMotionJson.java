@@ -65,11 +65,12 @@ public final class CameraMotionJson {
             keys.add(new CameraPath.Keyframe(k.get("t").getAsDouble(), k.get("x").getAsDouble(), k.get("y").getAsDouble(), k.get("z").getAsDouble(),
                     k.has("yaw") ? k.get("yaw").getAsFloat() : null,
                     k.has("pitch") ? k.get("pitch").getAsFloat() : null,
-                    k.has("fov") ? k.get("fov").getAsDouble() : null));
+                    k.has("fov") ? k.get("fov").getAsDouble() : null,
+                    k.has("roll") ? k.get("roll").getAsDouble() : null));
             i++;
         }
         boolean smooth = !"linear".equals(str(p, "interpolation", "smooth"));
-        boolean ease = "inOut".equals(str(p, "ease", "inOut"));
+        CameraPath.Ease ease = CameraPath.Ease.parse(str(p, "ease", "inOut"));
         Vec lookAt = p.has("lookAt") && p.get("lookAt").isJsonObject() ? vec(p.getAsJsonObject("lookAt"), "lookAt") : null;
         return CameraPath.of(keys, smooth, ease, lookAt);
     }

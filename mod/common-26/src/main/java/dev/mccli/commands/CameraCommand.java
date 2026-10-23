@@ -95,6 +95,7 @@ public class CameraCommand implements Command {
             }
             case "path", "orbit", "follow", "attach", "shot" -> CameraOverride.INSTANCE.play(CameraMotionJson.parse(p, current), System.nanoTime());
             case "fov" -> CameraOverride.INSTANCE.setFov(p.has("fov") && !p.get("fov").isJsonNull() ? p.get("fov").getAsDouble() : null);
+            case "roll" -> CameraOverride.INSTANCE.setRoll(p.has("roll") && !p.get("roll").isJsonNull() ? p.get("roll").getAsDouble() : null);
             case "freecam_on" -> CameraOverride.INSTANCE.set(current);
             case "freecam_off", "reset" -> CameraOverride.INSTANCE.clear();
             case "status" -> { }
