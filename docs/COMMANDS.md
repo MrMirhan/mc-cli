@@ -38,6 +38,8 @@ Differences on Minecraft 26.x:
 | `chat send\|history\|clear` | Chat messaging and history |
 | `capture -o path [--clean]` | Take screenshot |
 | `record` (protocol) | Record an MP4 with sound, optionally along a camera orbit or path |
+| `gui` (protocol, 26.x) | The open screen as data (widgets, slots with lore and tooltip) and hover/click/button/close |
+| `control` (protocol, 26.x) | What the player allows: mode, classes, paused, consent |
 | `analyze path` | Analyze screenshot |
 | `compare a b` | Compare screenshots |
 | `perf` | Performance metrics |
@@ -228,6 +230,34 @@ droppedFrames, audio, codec, preset, crf, speed, sizeBytes, encodeMs, note?}`. `
 encoder fell behind: use a faster preset, a lower fps or a lower resolution.
 
 ---
+
+## gui
+
+Minecraft 26.x only. `{"command": "gui", "params": {"action": "read"}}` returns the open screen:
+
+```json
+{"open": true, "screen": "ContainerScreen", "title": "Kit Menu", "gui_width": 480, "gui_height": 270, "gui_scale": 4,
+ "widgets": [{"type": "Button", "text": "Done", "x": 190, "y": 200, "width": 100, "height": 20, "active": true}],
+ "container": {"left": 152, "top": 50, "width": 176, "height": 166, "sync_id": 3, "slots": 63},
+ "slots": [{"index": 13, "center_x": 232, "center_y": 76, "player_inventory": false,
+            "item": {"id": "minecraft:diamond_sword", "name": "Warrior Kit", "rarity": "rare",
+                     "lore": [{"text": "Price: 500", "json": {"text": "Price: 500", "color": "gold"}}],
+                     "tooltip": [{"text": "Warrior Kit"}, {"text": "Price: 500"}]}}],
+ "hovered_slot": 13, "cursor": {"empty": true}}
+```
+
+`include_empty: false` leaves empty slots out. `tooltip` is what this client draws for the item (name, lore,
+enchantments, attributes), `lore` is the item's own lore component.
+
+| action | params | |
+|---|---|---|
+| `read` (default) | `include_empty` | the screen as data |
+| `hover` | `slot` or `x, y` | moves the cursor; the tooltip shows |
+| `click`, `right_click`, `shift_click` | `slot` or `x, y` | a real mouse click on the screen |
+| `button` | `text` | clicks the first active widget whose label contains `text` |
+| `close` | | closes the screen like Escape |
+
+`read` is in the `observe` class, every other action in `input` (see PROTOCOL.md, Access and control).
 
 ## time
 
