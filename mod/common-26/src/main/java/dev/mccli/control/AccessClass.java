@@ -18,7 +18,7 @@ public enum AccessClass {
         Map.entry("status", OBSERVE), Map.entry("players", OBSERVE), Map.entry("screenshot", OBSERVE),
         Map.entry("record", OBSERVE), Map.entry("logs", OBSERVE), Map.entry("perf", OBSERVE),
         Map.entry("item", OBSERVE), Map.entry("inventory", OBSERVE), Map.entry("block", OBSERVE),
-        Map.entry("entity", OBSERVE), Map.entry("camera", OBSERVE), Map.entry("replay", OBSERVE),
+        Map.entry("entity", OBSERVE), Map.entry("replay", OBSERVE),
         Map.entry("events", OBSERVE),
         Map.entry("input", INPUT), Map.entry("interact", INPUT), Map.entry("window", INPUT),
         Map.entry("shader", INPUT), Map.entry("resourcepack", INPUT),
@@ -31,6 +31,9 @@ public enum AccessClass {
         if ("gui".equals(command)) {
             String action = params != null && params.has("action") ? params.get("action").getAsString() : "read";
             return "read".equals(action) ? OBSERVE : INPUT;
+        }
+        if ("camera".equals(command)) {
+            return params != null && params.has("action") ? OBSERVE : INPUT;
         }
         return BY_COMMAND.getOrDefault(command, WORLD);
     }
