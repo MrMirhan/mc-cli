@@ -1,0 +1,11 @@
+{
+  "mccli.consent.title": "Bir araç bu oyunu kontrol etmek istiyor",
+  "mccli.consent.body": "Bu bilgisayardaki bir program (örneğin Video Atölyesi) bu oturum için Minecraft'ı kontrol etmek istiyor: %s. Kontrol sürdükçe sağ üstte kırmızı bir rozet görünür; F8 ile istediğin an duraklatırsın. Kalıcı ayar config/mccli.json içinde.",
+  "mccli.consent.accept": "Bu oturum için izin ver",
+  "mccli.consent.refuse": "Reddet",
+  "mccli.class.observe": "bakma ve kayıt",
+  "mccli.class.input": "fare, tuşlar ve menüler",
+  "mccli.class.world": "sohbet, komutlar ve sunucular",
+  "mccli.badge.active": "AI kontrolünde · F8 duraklat",
+  "mccli.badge.paused": "AI kontrolü duraklatıldı · F8"
+}

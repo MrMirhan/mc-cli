@@ -100,7 +100,7 @@ public class SocketServer {
         for (int i = 0; i < maxPortAttempts; i++) {
             int port = basePort + i;
             try {
-                ServerSocket socket = new ServerSocket(port);
+                ServerSocket socket = new ServerSocket(port, 50, bindAddress());
                 if (i > 0) {
                     McCliMod.LOGGER.info("Port {} was in use, bound to port {} instead",
                         basePort, port);
@@ -118,6 +118,12 @@ public class SocketServer {
     public void removeClient(ClientHandler handler) {
         clients.remove(handler);
     }
+    // Loopback unless MCCLI_BIND names another address (a client in a container driven from outside it).
+    static java.net.InetAddress bindAddress() throws java.net.UnknownHostException {
+        String bind = System.getenv("MCCLI_BIND");
+        return bind == null || bind.isBlank() ? java.net.InetAddress.getLoopbackAddress() : java.net.InetAddress.getByName(bind.trim());
+    }
+
 
     public void stop() {
         running.set(false);

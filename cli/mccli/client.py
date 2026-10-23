@@ -31,7 +31,7 @@ class Client:
             mc.shader_reload()
     """
 
-    def __init__(self, host: str = "localhost", port: int = 25580, timeout: float = 10.0):
+    def __init__(self, host: str = "localhost", port: int = 25580, timeout: float = 10.0, token: Optional[str] = None):
         """
         Initialize client.
 
@@ -39,10 +39,14 @@ class Client:
             host: MC-CLI server host (default: localhost)
             port: MC-CLI server port (default: 25580)
             timeout: Socket timeout in seconds (default: 10.0)
+            token: access token (default: MCCLI_TOKEN, else the token file the game registered for this port)
         """
+        from .registry import token_for
+
         self.host = host
         self.port = port
         self.timeout = timeout
+        self.token = token if token is not None else token_for(port)
         self._socket: Optional[socket.socket] = None
         self._request_id = 0
         self._buffer = ""
@@ -88,6 +92,8 @@ class Client:
             "command": command,
             "params": params or {}
         }
+        if self.token:
+            request["token"] = self.token
 
         # Send request
         request_json = json.dumps(request) + "\n"

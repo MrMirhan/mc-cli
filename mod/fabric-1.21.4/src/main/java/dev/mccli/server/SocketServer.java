@@ -43,7 +43,7 @@ public class SocketServer {
 
     private void acceptConnections() {
         try {
-            serverSocket = new ServerSocket(port);
+            serverSocket = new ServerSocket(port, 50, bindAddress());
             McCliMod.LOGGER.info("MC-CLI server listening on port {}", port);
 
             while (running.get()) {
@@ -70,6 +70,12 @@ public class SocketServer {
     public void removeClient(ClientHandler handler) {
         clients.remove(handler);
     }
+    // Loopback unless MCCLI_BIND names another address (a client in a container driven from outside it).
+    static java.net.InetAddress bindAddress() throws java.net.UnknownHostException {
+        String bind = System.getenv("MCCLI_BIND");
+        return bind == null || bind.isBlank() ? java.net.InetAddress.getLoopbackAddress() : java.net.InetAddress.getByName(bind.trim());
+    }
+
 
     public void stop() {
         running.set(false);

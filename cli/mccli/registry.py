@@ -28,6 +28,8 @@ class Instance:
     version: str
     host: str = "localhost"
     headless: bool = False
+    token_file: Optional[str] = None
+    control: Optional[str] = None
 
     @property
     def address(self) -> str:
@@ -81,11 +83,27 @@ def list_instances(include_dead: bool = False) -> List[Instance]:
             start_time=entry.get("startTime", 0),
             version=entry.get("version", "unknown"),
             headless=bool(entry.get("headless", False)),
+            token_file=entry.get("tokenFile"),
+            control=entry.get("control"),
         )
         if include_dead or instance.is_alive():
             instances.append(instance)
 
     return instances
+
+
+def token_for(port: int) -> Optional[str]:
+    """The token a request to this port carries: MCCLI_TOKEN, else the token file the game on that port registered."""
+    env = os.environ.get("MCCLI_TOKEN", "").strip()
+    if env:
+        return env
+    for instance in list_instances(include_dead=True):
+        if instance.port == port and instance.token_file:
+            try:
+                return Path(instance.token_file).read_text(encoding="utf-8").strip()
+            except OSError:
+                return None
+    return None
 
 
 def find_instance(name_or_port: str) -> Optional[Instance]:

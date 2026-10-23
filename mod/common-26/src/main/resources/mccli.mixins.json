@@ -10,6 +10,7 @@
     "ClientCommonNetworkHandlerMixin",
     "DisconnectedScreenMixin",
     "FrameRenderedMixin",
+    "HudBadgeMixin",
     "KeyboardHandlerInvoker",
     "LibraryMixin",
     "MouseHandlerInvoker",

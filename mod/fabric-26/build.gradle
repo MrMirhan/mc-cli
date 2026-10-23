@@ -35,6 +35,10 @@ sourceSets {
         }
         resources { srcDir '../common-26/src/main/resources' }
     }
+    // Loader-free unit tests of the shared code run once, here.
+    test {
+        java { srcDir '../common-26/src/test/java' }
+    }
 }
 
 dependencies {
@@ -42,6 +46,12 @@ dependencies {
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
     // Gson ships with Minecraft; no extra dependency needed.
+    testImplementation "org.junit.jupiter:junit-jupiter:5.11.4"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+    useJUnitPlatform()
 }
 
 java {
