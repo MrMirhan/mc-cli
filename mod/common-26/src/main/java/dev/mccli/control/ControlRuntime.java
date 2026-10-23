@@ -2,6 +2,7 @@ package dev.mccli.control;
 
 import com.google.gson.JsonObject;
 import dev.mccli.McCliMod;
+import dev.mccli.platform.Platform;
 import dev.mccli.util.ClientCompat;
 import dev.mccli.util.HeadlessMode;
 import dev.mccli.util.MainThreadExecutor;
@@ -79,7 +80,7 @@ public final class ControlRuntime {
         if (!policy.active() || client.getWindow() == null) {
             return;
         }
-        boolean down = InputConstants.isKeyDown(client.getWindow(), InputConstants.KEY_F8);
+        boolean down = Platform.isKeyDown(client, InputConstants.KEY_F8);
         if (down && !pauseKeyDown) {
             policy.togglePause();
             McCliMod.LOGGER.info("MC-CLI remote control {}", policy.paused() ? "paused" : "resumed");

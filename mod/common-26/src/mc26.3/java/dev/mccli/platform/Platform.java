@@ -52,6 +52,11 @@ public final class Platform {
         player.swing(InteractionHand.MAIN_HAND, player.getMainHandItem().getAttackAnimation(), false);
     }
 
+    /** Whether a keyboard key is held now. */
+    public static boolean isKeyDown(Minecraft client, int key) {
+        return com.mojang.blaze3d.platform.InputConstants.isKeyDown(key);
+    }
+
     /** An offscreen RGBA render target with depth, for drawing the GUI a second time. */
     public static com.mojang.blaze3d.pipeline.RenderTarget newCanvas(String name, int width, int height) {
         return new com.mojang.blaze3d.pipeline.TextureTarget(name, width, height,
