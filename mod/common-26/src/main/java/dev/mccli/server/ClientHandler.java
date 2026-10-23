@@ -105,8 +105,8 @@ public class ClientHandler {
                 });
 
         } catch (Exception e) {
-            McCliMod.LOGGER.error("Error processing request: {}", requestJson, e);
-            sendError(requestId, "PARSE_ERROR", e.getMessage());
+            McCliMod.LOGGER.warn("Could not parse MC-CLI request ({})", e.getClass().getSimpleName());
+            sendError(requestId, "PARSE_ERROR", "invalid request");
         }
     }
 

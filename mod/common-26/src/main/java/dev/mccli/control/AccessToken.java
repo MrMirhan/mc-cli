@@ -32,6 +32,7 @@ public final class AccessToken {
         if (Files.isRegularFile(file)) {
             String stored = Files.readString(file, StandardCharsets.UTF_8).trim();
             if (stored.length() >= 32) {
+                ownerOnly(file);
                 return new AccessToken(stored, file);
             }
         }
@@ -40,12 +41,16 @@ public final class AccessToken {
         String created = HexFormat.of().formatHex(bytes);
         Files.createDirectories(configDir);
         Files.writeString(file, created + "\n", StandardCharsets.UTF_8);
+        ownerOnly(file);
+        return new AccessToken(created, file);
+    }
+
+    private static void ownerOnly(Path file) throws IOException {
         try {
             Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
         } catch (UnsupportedOperationException ignored) {
             // Windows: the file stays in the player's own profile folder.
         }
-        return new AccessToken(created, file);
     }
 
     public boolean matches(String presented) {

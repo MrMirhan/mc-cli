@@ -52,6 +52,8 @@ class ControlPolicyTest {
         assertEquals(AccessClass.OBSERVE, AccessClass.of("gui", params("{\"action\":\"read\"}")));
         assertEquals(AccessClass.OBSERVE, AccessClass.of("gui", new JsonObject()));
         assertEquals(AccessClass.INPUT, AccessClass.of("gui", params("{\"action\":\"click\"}")));
+        assertEquals(AccessClass.INPUT, AccessClass.of("camera", params("{\"yaw\":90,\"pitch\":0}")));
+        assertEquals(AccessClass.OBSERVE, AccessClass.of("camera", params("{\"action\":\"orbit\"}")));
         assertEquals(AccessClass.WORLD, AccessClass.of("something-new", new JsonObject()));
         assertEquals(AccessClass.WORLD, AccessClass.of("execute", new JsonObject()));
     }
