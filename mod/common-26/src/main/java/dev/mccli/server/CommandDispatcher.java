@@ -65,6 +65,8 @@ public class CommandDispatcher {
         register(new WorldCommand());
         register(new InputCommand());
         register(new GuiCommand());
+        register(new ScanCommand());
+        register(new PilotCommand());
 
         McCliMod.LOGGER.info("Registered {} commands", commands.size());
     }

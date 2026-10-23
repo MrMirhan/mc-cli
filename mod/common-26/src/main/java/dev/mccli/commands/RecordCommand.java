@@ -29,6 +29,8 @@ import java.util.concurrent.CompletableFuture;
  * - duration_ms: stop after this long (default: the camera motion's length); max_seconds: hard limit (default 120)
  * - wait: return when the video is written (needs duration_ms or camera)
  * - wait_for_terrain: wait until the view is built before the first frame (default true)
+ * - render: true steps the camera clock one frame per captured frame (no sound, needs a length);
+ *   motion_blur 1-16 sub-frames per frame, shutter 0-1 (default 0.5)
  *
  * stop / a wait:true start return: path, durationMs, fps, width, height, frames, droppedFrames, duplicatedFrames, audio, sizeBytes.
  */

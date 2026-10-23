@@ -70,6 +70,8 @@ public final class Recorder {
         Path videoTemp, wavTemp;
         int pendingRepeats;
         long duplicated;
+        int queueCap;
+        long renderFrame, renderTotal;
         int guiScaleBefore = -1;
         final Deque<String> stderr = new ArrayDeque<>();
 
@@ -168,13 +170,19 @@ public final class Recorder {
             String base = "." + p.savePath().getFileName() + "." + Long.toHexString(ThreadLocalRandom.current().nextLong());
             s.videoTemp = p.savePath().resolveSibling(base + ".video." + p.container());
             s.wavTemp = s.audio ? p.savePath().resolveSibling(base + ".wav") : null;
-            List<String> cmd = FfmpegArgs.video(s.ffmpeg.toString(), s.width, s.height, p.settings(), s.videoTemp, p.container());
+            List<String> cmd = FfmpegArgs.video(s.ffmpeg.toString(), s.width, s.height, p.settings(), p.render(), s.videoTemp, p.container());
             s.process = new ProcessBuilder(cmd).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
             Thread.ofPlatform().daemon().name("MC-CLI ffmpeg log").start(() -> readStderr(s));
             int frameBytes = s.width * s.height * 4;
-            s.writer = new FrameWriter(s.process.getOutputStream(), frameBytes, (int) Math.max(2, Math.min(64, QUEUE_BYTES / frameBytes)), p.gui() != null);
-            s.pacer = new FramePacer(p.settings().fps());
+            s.queueCap = (int) Math.max(2, Math.min(64, QUEUE_BYTES / frameBytes));
+            s.writer = new FrameWriter(s.process.getOutputStream(), frameBytes, s.queueCap, p.gui() != null);
+            int fps = p.settings().fps();
+            s.pacer = new FramePacer(p.render() != null ? p.render().rate(fps) : fps);
             s.t0 = System.nanoTime();
+            if (p.render() != null) {
+                s.renderTotal = p.render().totalFrames(p.durationMs(), fps);
+                CameraOverride.INSTANCE.useRenderClock(s.t0);
+            }
             EventLog.openSidecar(eventsPath(p), s.t0, p.settings().fps());
             JsonObject start = new JsonObject();
             start.addProperty("path", p.savePath().toString());
@@ -205,6 +213,10 @@ public final class Recorder {
         o.addProperty("fps", p.settings().fps());
         o.addProperty("preset", p.settings().preset());
         o.addProperty("audio", s.audio);
+        if (p.render() != null) {
+            o.addProperty("render", true);
+            o.addProperty("motionBlur", p.render().samples());
+        }
         if (p.gui() != null) o.addProperty("layer", p.gui().layer().name().toLowerCase(java.util.Locale.ROOT).replace('_', '+'));
         if (p.durationMs() != null) o.addProperty("durationMs", p.durationMs());
         o.addProperty("maxSeconds", p.maxSeconds());
@@ -225,7 +237,9 @@ public final class Recorder {
         Session s = session;
         if (s == null) return;
         long now = System.nanoTime();
-        if (s.state == State.RECORDING) {
+        if (s.state == State.RECORDING && s.params.render() != null) {
+            renderFrame(s);
+        } else if (s.state == State.RECORDING) {
             long t = now - s.t0;
             RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
             Long duration = s.params.durationMs();
@@ -236,6 +250,30 @@ public final class Recorder {
             else capture(s, target, s.pacer.framesFor(t));
         }
         if (s.state == State.FINISHING && s.process != null && (s.pendingRepeats == 0 || now > s.finishDeadline)) finalizeAsync(s);
+    }
+
+    /**
+     * Render mode: the frame just drawn is at video time frame/rate. It is captured once and the camera clock steps
+     * to the next frame; while the encoder is behind, the same time is drawn again instead of a frame being dropped.
+     */
+    private void renderFrame(Session s) {
+        RenderMode r = s.params.render();
+        int fps = s.params.settings().fps();
+        RenderTarget target = Minecraft.getInstance().gameRenderer.mainRenderTarget();
+        if (s.writer.failure() != null || !s.process.isAlive()) finish(s, "error", clock(s));
+        else if (target.width != s.width || target.height != s.height) finish(s, "resized", clock(s));
+        else if (s.writer.queued() < s.queueCap - 1 && s.pendingRepeats < 3) {
+            capture(s, target, s.pacer.framesFor(r.pacedNanos(s.renderFrame, fps)));
+            s.renderFrame++;
+            if (s.renderFrame >= s.renderTotal) finish(s, "duration", s.t0 + s.params.durationMs() * 1_000_000L);
+            else CameraOverride.INSTANCE.useRenderClock(s.t0 + r.nanosAt(s.renderFrame, fps));
+        }
+    }
+
+    /** Now on the video's clock: the wall clock, or the frame clock in render mode. */
+    private static long clock(Session s) {
+        RenderMode r = s.params.render();
+        return r == null ? System.nanoTime() : s.t0 + r.nanosAt(s.renderFrame, s.params.settings().fps());
     }
 
     private void capture(Session s, RenderTarget target, int repeats) {
@@ -266,7 +304,7 @@ public final class Recorder {
         if (s.state == State.PREPARING) {
             throw err("RECORD_STARTING", "The recording is still starting (waiting for terrain).", "Retry the stop in a moment.");
         }
-        if (s.state == State.RECORDING) finish(s, "requested", System.nanoTime());
+        if (s.state == State.RECORDING) finish(s, "requested", clock(s));
         // nothing left on the GPU: finish now, without waiting for another rendered frame
         if (s.process != null && s.pendingRepeats == 0) finalizeAsync(s);
         return s.done;
@@ -280,7 +318,7 @@ public final class Recorder {
             o.addProperty("state", s.state.name().toLowerCase(java.util.Locale.ROOT));
             o.addProperty("savePath", s.params.savePath().toString());
             if (s.state != State.PREPARING) {
-                o.addProperty("elapsedMs", ((s.state == State.FINISHING ? s.stopNanos : System.nanoTime()) - s.t0) / 1_000_000);
+                o.addProperty("elapsedMs", ((s.state == State.FINISHING ? s.stopNanos : clock(s)) - s.t0) / 1_000_000);
                 o.addProperty("frames", s.pacer.emitted());
                 o.addProperty("duplicatedFrames", s.duplicated);
                 o.addProperty("droppedFrames", s.writer.dropped());
@@ -300,7 +338,7 @@ public final class Recorder {
     public void shutdown() {
         Session s = session;
         if (s == null || s.state == State.PREPARING) return;
-        if (s.state == State.RECORDING) finish(s, "quit", System.nanoTime());
+        if (s.state == State.RECORDING) finish(s, "quit", clock(s));
         if (s.process != null) finalizeAsync(s);
         try {
             s.written.get(15, TimeUnit.SECONDS);
@@ -397,6 +435,7 @@ public final class Recorder {
             o.addProperty("duplicatedFrames", s.duplicated);
             o.addProperty("droppedFrames", s.writer.dropped());
             o.addProperty("audio", s.audio && !s.soundLost);
+            if (p.render() != null) o.addProperty("motionBlur", p.render().samples());
             o.addProperty("codec", switch (p.container()) {
                 case "mov" -> "prores_4444";
                 case "webm" -> "vp9";
@@ -457,6 +496,7 @@ public final class Recorder {
                 s.soundLost = true;   // the video is still worth keeping
             }
         }
+        CameraOverride.INSTANCE.useRenderClock(null);
         if (s.audio) closeLoopback(mc);
         if (s.guiScaleBefore > 0) {
             mc.options.guiScale().set(s.guiScaleBefore);

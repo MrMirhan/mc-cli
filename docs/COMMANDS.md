@@ -227,6 +227,12 @@ overrides the lookup). The video has the window's resolution: size the window fi
 | `duration_ms`, `max_seconds` | stop after this long; hard limit (default 120, at most 600) |
 | `wait` | return when the file is written (needs `duration_ms` or `camera`) |
 | `wait_for_terrain` | wait until the view is built before the first frame (default true) |
+| `render` (26.x) | `true`: frame-exact. The camera clock steps 1/fps per captured frame, so heavy shaders never skip or repeat a frame. No sound (add music in the edit); needs `duration_ms` or `camera` |
+| `motion_blur`, `shutter` (26.x) | with `render`: sub-frames per frame (1-16) and the open part of each frame (0-1, default 0.5 = 180°). 8 at 60 fps renders 480 frames per second of video |
+
+Render mode moves only the camera on the frame clock. The world (mobs, water, particles, day time) keeps real time,
+so a render slower than real time shows them sped up: use it for camera moves over builds, or freeze the world on a
+test server first.
 
 Sound comes from an OpenAL loopback device, so nothing plays through the speakers while it records, and a headless
 client records sound too. Sound sources are heard from the camera's position.
@@ -264,6 +270,50 @@ enchantments, attributes), `lore` is the item's own lore component.
 | `close` | | closes the screen like Escape |
 
 `read` is in the `observe` class, every other action in `input` (see PROTOCOL.md, Access and control).
+
+## scan
+
+Minecraft 26.x only. The blocks around the player in one compact answer, so a tool reads its surroundings without
+a screenshot. `{"command": "scan", "params": {"radius": 6, "below": 2, "above": 4}}` (radius 1-16; at most 40,000
+blocks) returns `origin` (the minimum corner), `size`, `palette` (`{"#": "minecraft:stone", ".": "air"}`), and
+`layers`: one entry per y from bottom to top, each a list of rows from north to south, each row a string from west
+to east. Also `player`, `facing`, `yaw`, `pitch` and the `crosshair` block with its face. `scan` is in the
+`observe` class.
+
+## pilot
+
+Minecraft 26.x only. Plays steps with the player's own key mappings and crosshair, one decision per tick, with a
+person's head movement (a spring-damped turn, aim wander, reaction delay). It returns at once and keeps playing,
+so a tool can send a whole wall or path in one call and check progress with `status`, `scan`, `events` or a
+screenshot.
+
+```json
+{"command": "pilot", "params": {"action": "run", "profile": "tryhard", "steps": [
+  {"do": "select", "item": "minecraft:oak_planks"},
+  {"do": "walk_to", "x": 10, "z": 4},
+  {"do": "place", "x": 11, "y": 64, "z": 4},
+  {"do": "place", "x": 11, "y": 65, "z": 4},
+  {"do": "break", "x": 12, "y": 64, "z": 4}]}}
+```
+
+| step | params | does |
+|---|---|---|
+| `walk_to` | `x`, `z` | walks there, jumps one-block steps; fails after 60 s |
+| `look_at` | `x`, `y`, `z` | turns the head to a point |
+| `place` | `x`, `y`, `z`, `item?` | looks at a neighbour's face and right-clicks, so the held block lands at that position; within reach (about 4.4 blocks) |
+| `break` | `x`, `y`, `z` | holds attack on the block until it is gone |
+| `select` | `slot` (0-8) or `item` | picks a hotbar slot |
+| `jump`, `wait` | `ms` for wait | |
+| `follow` | `target`, `distance` (3), `seconds` | keeps near a player or mob |
+| `fight` | `target`, `style` (`1.8`/`1.9`), `seconds`, `profile` | close-range fighting: CPS or cooldown, strafes, w-taps, crits |
+
+`profile` (`rookie`, `mid`, `tryhard`) sets how fast the head turns and how well it aims. `status` returns
+`running`, the current step, `queued`, `done`, `failed`, `lastError`; `stop` stops and lets go of every key. Each
+finished step adds `pilot_done` or `pilot_failed` to the event log; a failed step clears the steps after it.
+
+The pilot acts only in a singleplayer world or on a server whose exact `host:port` is in `config/mccli.json`
+`"pilotServers": ["127.0.0.1:25566"]`. Automated movement and clicks on any other server count as cheating. F8
+pauses it and an open screen holds it; a person pressing keys takes over. `run` is in the `world` class.
 
 ## events
 

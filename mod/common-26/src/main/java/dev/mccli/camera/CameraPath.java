@@ -11,19 +11,54 @@ import java.util.List;
 public final class CameraPath implements CameraMotion {
     public static final int MAX_KEYFRAMES = 64;
 
-    /** {@code t} in ms; yaw and pitch may be null only when the path has a lookAt point; fov on all keyframes or none. */
-    public record Keyframe(double t, double x, double y, double z, Float yaw, Float pitch, Double fov) {
+    /**
+     * {@code t} in ms; yaw and pitch may be null only when the path has a lookAt point; fov and roll (degrees, positive
+     * banks the picture clockwise) on all keyframes or on none.
+     */
+    public record Keyframe(double t, double x, double y, double z, Float yaw, Float pitch, Double fov, Double roll) {
         public Keyframe(double t, double x, double y, double z, Float yaw, Float pitch) {
-            this(t, x, y, z, yaw, pitch, null);
+            this(t, x, y, z, yaw, pitch, null, null);
+        }
+
+        public Keyframe(double t, double x, double y, double z, Float yaw, Float pitch, Double fov) {
+            this(t, x, y, z, yaw, pitch, fov, null);
         }
     }
 
-    private final double[] t, x, y, z, yaw, pitch, fov;
-    private final boolean smooth, ease;
+    /** How the flight's time is spread: all start and end at rest except NONE and the start of OUT / end of IN. */
+    public enum Ease {
+        NONE, IN, OUT, IN_OUT, SMOOTHER;
+
+        public double apply(double f) {
+            return switch (this) {
+                case NONE -> f;
+                case IN -> f * f;
+                case OUT -> 1 - (1 - f) * (1 - f);
+                case IN_OUT -> f * f * (3 - 2 * f);
+                case SMOOTHER -> f * f * f * (f * (f * 6 - 15) + 10);
+            };
+        }
+
+        public static Ease parse(String name) {
+            return switch (name) {
+                case "none", "linear" -> NONE;
+                case "in" -> IN;
+                case "out" -> OUT;
+                case "inOut", "in_out" -> IN_OUT;
+                case "smoother", "cinematic" -> SMOOTHER;
+                default -> throw new IllegalArgumentException("ease is none, in, out, inOut or smoother");
+            };
+        }
+    }
+
+    private final double[] t, x, y, z, yaw, pitch, fov, roll;
+    private final boolean smooth;
+    private final Ease ease;
     private final Vec lookAt;
     private final double duration;
 
-    private CameraPath(double[] t, double[] x, double[] y, double[] z, double[] yaw, double[] pitch, double[] fov, boolean smooth, boolean ease, Vec lookAt) {
+    private CameraPath(double[] t, double[] x, double[] y, double[] z, double[] yaw, double[] pitch, double[] fov, double[] roll,
+                       boolean smooth, Ease ease, Vec lookAt) {
         this.t = t;
         this.x = x;
         this.y = y;
@@ -31,14 +66,19 @@ public final class CameraPath implements CameraMotion {
         this.yaw = yaw;
         this.pitch = pitch;
         this.fov = fov;
+        this.roll = roll;
         this.smooth = smooth;
         this.ease = ease;
         this.lookAt = lookAt;
         this.duration = t[t.length - 1];
     }
 
-    /** @throws IllegalArgumentException with a message for the caller when the keyframes cannot make a path */
     public static CameraPath of(List<Keyframe> keys, boolean smooth, boolean ease, Vec lookAt) {
+        return of(keys, smooth, ease ? Ease.IN_OUT : Ease.NONE, lookAt);
+    }
+
+    /** @throws IllegalArgumentException with a message for the caller when the keyframes cannot make a path */
+    public static CameraPath of(List<Keyframe> keys, boolean smooth, Ease ease, Vec lookAt) {
         if (keys.size() < 2) throw new IllegalArgumentException("a path needs at least 2 keyframes");
         if (keys.size() > MAX_KEYFRAMES) throw new IllegalArgumentException("a path takes at most " + MAX_KEYFRAMES + " keyframes");
         int n = keys.size();
@@ -48,6 +88,12 @@ public final class CameraPath implements CameraMotion {
         double[] fov = withFov == 0 ? null : keys.stream().mapToDouble(k -> {
             if (k.fov() < 1 || k.fov() > 170) throw new IllegalArgumentException("fov must be 1-170 degrees");
             return k.fov();
+        }).toArray();
+        long withRoll = keys.stream().filter(k -> k.roll() != null).count();
+        if (withRoll != 0 && withRoll != n) throw new IllegalArgumentException("give roll on every keyframe or on none");
+        double[] roll = withRoll == 0 ? null : keys.stream().mapToDouble(k -> {
+            if (Math.abs(k.roll()) > 180) throw new IllegalArgumentException("roll must be -180 to 180 degrees");
+            return k.roll();
         }).toArray();
         double start = keys.get(0).t();
         for (int i = 0; i < n; i++) {
@@ -64,7 +110,7 @@ public final class CameraPath implements CameraMotion {
                 pitch[i] = k.pitch();
             }
         }
-        return new CameraPath(t, x, y, z, yaw, pitch, fov, smooth, ease, lookAt);
+        return new CameraPath(t, x, y, z, yaw, pitch, fov, roll, smooth, ease, lookAt);
     }
 
     @Override
@@ -74,9 +120,16 @@ public final class CameraPath implements CameraMotion {
         return curve(fov, i, local(ms, i));
     }
 
+    @Override
+    public Double rollAt(double ms) {
+        if (roll == null) return null;
+        int i = segment(ms);
+        return curve(roll, i, local(ms, i));
+    }
+
     private double timeAt(double ms) {
         double f = duration <= 0 ? 1 : CameraMotion.clamp01(ms / duration);
-        return (ease ? CameraMotion.easeInOut(f) : f) * duration;
+        return ease.apply(f) * duration;
     }
 
     private int segment(double ms) {

@@ -14,15 +14,22 @@ import java.util.concurrent.TimeUnit;
 public final class FfmpegArgs {
     private FfmpegArgs() {}
 
-    /** Frames arrive as RGBA rows bottom-up (as read back from the GPU), hence the vflip. */
-    public static List<String> video(String ffmpeg, int width, int height, VideoSettings s, Path out, String container) {
+    /**
+     * Frames arrive as RGBA rows bottom-up (as read back from the GPU), hence the vflip. With motion blur the input
+     * runs at fps × samples: tmix averages the open-shutter sub-frames and framestep keeps one per output frame.
+     */
+    public static List<String> video(String ffmpeg, int width, int height, VideoSettings s, RenderMode render, Path out, String container) {
         int[] size = VideoSettings.outputSize(width, height, s.maxHeight());
+        boolean blur = render != null && render.samples() > 1;
         String filters = "vflip";
+        if (blur) filters += ",tmix=frames=" + render.blurFrames() + ",framestep=" + render.samples();
         if (size[1] != (height & ~1)) filters += ",scale=" + size[0] + ":" + size[1] + ":flags=lanczos";
         else if (size[0] != width || size[1] != height) filters += ",crop=" + size[0] + ":" + size[1] + ":0:0";
+        int inputRate = render != null ? render.rate(s.fps()) : s.fps();
         List<String> a = new ArrayList<>(List.of(ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
-                "-f", "rawvideo", "-pix_fmt", "rgba", "-s", width + "x" + height, "-framerate", Integer.toString(s.fps()), "-i", "-",
+                "-f", "rawvideo", "-pix_fmt", "rgba", "-s", width + "x" + height, "-framerate", Integer.toString(inputRate), "-i", "-",
                 "-vf", filters));
+        if (blur) a.addAll(List.of("-r", Integer.toString(s.fps())));
         switch (container) {
             case "mov" -> a.addAll(List.of("-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le",
                     "-alpha_bits", "8", "-vendor", "apl0", out.toString()));
