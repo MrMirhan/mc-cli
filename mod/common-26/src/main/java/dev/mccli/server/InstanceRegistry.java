@@ -38,6 +38,10 @@ public class InstanceRegistry {
         public long startTime;
         public String version;
         public boolean headless;
+        /** Where a tool on this computer reads the token; null when the token came from MCCLI_TOKEN. */
+        public String tokenFile;
+        /** off, ask or on (config/mccli.json). */
+        public String control;
 
         public Instance() {}
 
@@ -48,6 +52,9 @@ public class InstanceRegistry {
             this.startTime = System.currentTimeMillis();
             this.version = McCliMod.MOD_ID;
             this.headless = dev.mccli.util.HeadlessMode.isRequested();
+            var token = dev.mccli.control.ControlRuntime.token();
+            this.tokenFile = token != null && token.file() != null ? token.file().toAbsolutePath().toString() : null;
+            this.control = dev.mccli.control.ControlRuntime.policy().mode().name().toLowerCase(java.util.Locale.ROOT);
         }
     }
 

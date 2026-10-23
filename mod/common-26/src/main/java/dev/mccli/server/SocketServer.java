@@ -4,6 +4,8 @@ import dev.mccli.McCliMod;
 
 import java.io.IOException;
 import java.net.BindException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Set;
@@ -100,7 +102,7 @@ public class SocketServer {
         for (int i = 0; i < maxPortAttempts; i++) {
             int port = basePort + i;
             try {
-                ServerSocket socket = new ServerSocket(port);
+                ServerSocket socket = new ServerSocket(port, 50, bindAddress());
                 if (i > 0) {
                     McCliMod.LOGGER.info("Port {} was in use, bound to port {} instead",
                         basePort, port);
@@ -113,6 +115,12 @@ public class SocketServer {
             }
         }
         return null;
+    }
+
+    /** Loopback unless MCCLI_BIND names another address (a client in a container driven from outside it). */
+    static InetAddress bindAddress() throws UnknownHostException {
+        String bind = System.getenv("MCCLI_BIND");
+        return bind == null || bind.isBlank() ? InetAddress.getLoopbackAddress() : InetAddress.getByName(bind.trim());
     }
 
     public void removeClient(ClientHandler handler) {

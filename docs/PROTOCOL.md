@@ -40,8 +40,39 @@ Client                          Server (Minecraft)
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | string | No | Request ID for correlation |
+| `token` | string | Yes (26.x) | Access token: `MCCLI_TOKEN` if the game was started with it, else the contents of `config/mccli-token`. `~/.mccli/instances.json` names the file per port (`tokenFile`). |
 | `command` | string | Yes | Command name |
 | `params` | object | No | Command parameters |
+
+## Access and control (26.x)
+
+The server listens on `127.0.0.1` only. `MCCLI_BIND=<address>` binds elsewhere (a client in a container driven from
+outside it); the token is still required.
+
+`config/mccli.json` holds what the player allows:
+
+```json
+{"remoteControl": "ask", "allow": ["observe", "input"]}
+```
+
+| `remoteControl` | Meaning |
+|---|---|
+| `off` | every command is refused (`CONTROL_OFF`) |
+| `ask` | the first command of a game session opens a consent screen; until the player answers, commands get `CONTROL_CONSENT_REQUIRED` |
+| `on` | allowed without asking |
+
+Without the file, a hidden client (`MCCLI_HEADLESS`) starts `on` with every class, and a windowed game starts `ask`
+with `observe` and `input`. `MCCLI_CONTROL=off|ask|on` overrides the mode.
+
+| Class | Commands |
+|---|---|
+| `observe` | status, players, screenshot, record, logs, perf, item, inventory, block, entity, camera, replay, gui read |
+| `input` | input, interact, window, shader, resourcepack, gui actions |
+| `world` | chat, execute, server, teleport, time, world, and any command not listed |
+
+While control is in use the player sees a badge in the top right corner (never in screenshots or recordings) and F8
+pauses every command (`CONTROL_PAUSED`) until pressed again. `{"command": "control"}` returns
+`{mode, allow, paused, consent}` in every mode.
 
 ## Response Format
 
@@ -86,6 +117,11 @@ Client                          Server (Minecraft)
 | `INVALID_PARAMS` | Missing or invalid parameters |
 | `EXECUTION_ERROR` | Command execution failed |
 | `NOT_IN_GAME` | Player not in world |
+| `UNAUTHORIZED` | Missing or wrong `token` |
+| `CONTROL_OFF` | The player turned remote control off |
+| `CONTROL_CONSENT_REQUIRED` | Waiting for the player to accept on the consent screen |
+| `CONTROL_DENIED` | The player refused, or does not allow this command's class |
+| `CONTROL_PAUSED` | The player paused control with F8 |
 
 ## Thread Model
 

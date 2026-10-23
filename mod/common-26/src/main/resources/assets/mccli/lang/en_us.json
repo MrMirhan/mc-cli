@@ -1,0 +1,11 @@
+{
+  "mccli.consent.title": "A tool wants to control this game",
+  "mccli.consent.body": "A program on this computer (for example Video Atölyesi) asks to control Minecraft for this session: %s. A red badge shows while it does; press F8 to pause it at any time. Change this for good in config/mccli.json.",
+  "mccli.consent.accept": "Allow for this session",
+  "mccli.consent.refuse": "Refuse",
+  "mccli.class.observe": "look and record",
+  "mccli.class.input": "mouse, keys and menus",
+  "mccli.class.world": "chat, commands and servers",
+  "mccli.badge.active": "AI control · F8 pause",
+  "mccli.badge.paused": "AI control paused · F8"
+}

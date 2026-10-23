@@ -3,6 +3,7 @@ package dev.mccli.commands;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.mccli.McCliMod;
+import dev.mccli.control.ControlBadge;
 import dev.mccli.util.IrisHelper;
 import dev.mccli.util.MainThreadExecutor;
 import dev.mccli.util.WindowFocusManager;
@@ -57,10 +58,10 @@ public class ScreenshotCommand implements Command {
         int settleMs = params.has("settle_ms") ? params.get("settle_ms").getAsInt() : (clean ? 200 : 0);
 
         if (params.has("camera") && params.get("camera").isJsonObject()) {
-            return withCamera(params.getAsJsonObject("camera"), clean ? () -> takeScreenshotWithOptions(path, true, delayMs, settleMs) : () -> takeScreenshot(path));
+            return withCamera(params.getAsJsonObject("camera"), () -> takeScreenshotWithOptions(path, clean, delayMs, settleMs));
         }
 
-        if (!clean && delayMs == 0) {
+        if (!clean && delayMs == 0 && !ControlBadge.drawn()) {
             return takeScreenshot(path);
         }
 
@@ -108,8 +109,13 @@ public class ScreenshotCommand implements Command {
 
         new Thread(() -> {
             boolean[] originalState = null;
+            ControlBadge.hide();
 
             try {
+                // The badge was in the last frame: let a few frames draw without it.
+                if (ControlBadge.drawn() && !clean) {
+                    Thread.sleep(150);
+                }
                 // Initial delay
                 if (delayMs > 0) {
                     Thread.sleep(delayMs);
@@ -153,6 +159,7 @@ public class ScreenshotCommand implements Command {
             } catch (Exception e) {
                 future.completeExceptionally(e);
             } finally {
+                ControlBadge.show();
                 // Restore state
                 if (clean && originalState != null) {
                     boolean[] state = originalState;

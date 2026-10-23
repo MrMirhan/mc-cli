@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.mccli.McCliMod;
+import dev.mccli.control.ControlRuntime;
 
 import java.io.*;
 import java.net.Socket;
@@ -13,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Handles communication with a single connected client.
  *
  * Protocol:
- * - Request: {"id": "1", "command": "status", "params": {}}
+ * - Request: {"id": "1", "token": "...", "command": "status", "params": {}}
  * - Response: {"id": "1", "success": true, "data": {...}}
  *
  * Each request-response is a single JSON line (newline-delimited).
@@ -74,6 +75,16 @@ public class ClientHandler {
             requestId = request.has("id") ? request.get("id").getAsString() : null;
             String command = request.get("command").getAsString();
             JsonObject params = request.has("params") ? request.getAsJsonObject("params") : new JsonObject();
+
+            if (!ControlRuntime.authorized(request.has("token") ? request.get("token").getAsString() : null)) {
+                sendError(requestId, "UNAUTHORIZED", "missing or wrong token: send the contents of config/mccli-token (or MCCLI_TOKEN) as \"token\"");
+                return;
+            }
+            String[] refused = ControlRuntime.refuse(command, params);
+            if (refused != null) {
+                sendError(requestId, refused[0], refused[1]);
+                return;
+            }
 
             final String finalRequestId = requestId;
             dispatcher.dispatch(command, params)
