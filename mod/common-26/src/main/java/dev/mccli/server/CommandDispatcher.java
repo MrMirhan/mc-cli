@@ -21,6 +21,7 @@ public class CommandDispatcher {
         // Core commands
         register(new StatusCommand());
         register(new ControlCommand());
+        register(new EventsCommand());
         register(new PlayersCommand());
         register(new TeleportCommand());
         register(new CameraCommand());

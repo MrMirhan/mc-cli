@@ -6,6 +6,8 @@ import dev.mccli.McCliMod;
 import dev.mccli.camera.CameraOverride;
 import dev.mccli.capture.GuiCanvas;
 import dev.mccli.capture.GuiScale;
+import dev.mccli.events.EventLog;
+import dev.mccli.util.IrisHelper;
 import dev.mccli.util.ClientCompat;
 import dev.mccli.mixin.SoundEngineAccessor;
 import dev.mccli.mixin.SoundManagerAccessor;
@@ -173,12 +175,21 @@ public final class Recorder {
             s.writer = new FrameWriter(s.process.getOutputStream(), frameBytes, (int) Math.max(2, Math.min(64, QUEUE_BYTES / frameBytes)), p.gui() != null);
             s.pacer = new FramePacer(p.settings().fps());
             s.t0 = System.nanoTime();
+            EventLog.openSidecar(eventsPath(p), s.t0, p.settings().fps());
+            JsonObject start = new JsonObject();
+            start.addProperty("path", p.savePath().toString());
+            start.addProperty("fps", p.settings().fps());
+            if (IrisHelper.isLoaded()) {
+                start.addProperty("shader", IrisHelper.areShadersEnabled() ? IrisHelper.getCurrentPackName() : "off");
+            }
+            EventLog.add("record_start", start);
             if (s.audio) {
                 s.tap = new AudioTap();
                 s.tap.start(s.wavTemp, s.t0);
             }
         } catch (IOException | RuntimeException e) {
             if (s.process != null) s.process.destroyForcibly();
+            EventLog.closeSidecar();
             deleteTemps(s);
             restore(s);
             session = null;
@@ -303,7 +314,14 @@ public final class Recorder {
         s.reason = reason;
         s.stopNanos = stopNanos;
         s.finishDeadline = System.nanoTime() + READBACK_GRACE_NANOS;
+        EventLog.add("record_stop", "reason", reason);
+        EventLog.closeSidecar();
         restore(s);
+    }
+
+    /** {@code <video>.events.jsonl} next to the video. */
+    public static Path eventsPath(RecordParams p) {
+        return p.savePath().resolveSibling(p.savePath().getFileName() + ".events.jsonl");
     }
 
     /** Hands the rest to a thread: close the frame stream, wait for ffmpeg, add the sound, move into place. */
@@ -369,6 +387,7 @@ public final class Recorder {
             deleteTemps(s);
             JsonObject o = new JsonObject();
             o.addProperty("savedPath", p.savePath().toString());
+            o.addProperty("eventsPath", eventsPath(p).toString());
             o.addProperty("reason", s.reason);
             o.addProperty("durationMs", (s.stopNanos - s.t0) / 1_000_000);
             o.addProperty("fps", p.settings().fps());

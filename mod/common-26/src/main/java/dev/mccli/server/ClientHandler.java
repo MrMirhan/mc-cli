@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.mccli.McCliMod;
 import dev.mccli.control.ControlRuntime;
+import dev.mccli.events.EventLog;
 
 import java.io.*;
 import java.net.Socket;
@@ -84,6 +85,13 @@ public class ClientHandler {
             if (refused != null) {
                 sendError(requestId, refused[0], refused[1]);
                 return;
+            }
+
+            if (!"events".equals(command) && !"control".equals(command) && !"status".equals(command)) {
+                JsonObject agent = new JsonObject();
+                agent.addProperty("command", command);
+                if (params.has("action")) agent.add("action", params.get("action"));
+                EventLog.add("agent", agent);
             }
 
             final String finalRequestId = requestId;

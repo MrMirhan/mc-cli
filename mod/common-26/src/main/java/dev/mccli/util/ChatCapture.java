@@ -29,6 +29,10 @@ public class ChatCapture {
      */
     public static void addMessage(String type, String sender, String content) {
         messages.addLast(new ChatMessage(Instant.now(), type, sender, content));
+        com.google.gson.JsonObject event = new com.google.gson.JsonObject();
+        if (sender != null) event.addProperty("sender", sender);
+        event.addProperty("text", content);
+        dev.mccli.events.EventLog.add(type, event);
 
         // Trim old messages
         while (messages.size() > MAX_MESSAGES) {
