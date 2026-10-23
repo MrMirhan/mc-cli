@@ -68,7 +68,11 @@ public class InputCommand implements Command {
     }
 
     private static JsonObject mouseMove(JsonObject params) {
-        Minecraft client = Minecraft.getInstance();
+        return moveNow(Minecraft.getInstance(), params);
+    }
+
+    /** Render thread: mouse_move without going through the main-thread queue. */
+    public static JsonObject moveNow(Minecraft client, JsonObject params) {
         double[] gui = point(client, params);
         return moveTo(client, gui[0], gui[1]);
     }

@@ -62,6 +62,15 @@ public class GuiCommand implements Command {
         };
     }
 
+    /** Render thread: moves the cursor to GUI coordinates, as the input command's mouse_move does. */
+    public static void moveCursor(Minecraft client, double guiX, double guiY) {
+        JsonObject p = new JsonObject();
+        p.addProperty("action", "mouse_move");
+        p.addProperty("x", guiX);
+        p.addProperty("y", guiY);
+        InputCommand.moveNow(client, p);
+    }
+
     private static JsonObject withAction(JsonObject params, String action) {
         JsonObject copy = params.deepCopy();
         copy.addProperty("action", action);

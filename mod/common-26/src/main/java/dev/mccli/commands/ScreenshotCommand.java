@@ -3,6 +3,7 @@ package dev.mccli.commands;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.mccli.McCliMod;
+import dev.mccli.capture.GuiCapture;
 import dev.mccli.control.ControlBadge;
 import dev.mccli.util.IrisHelper;
 import dev.mccli.util.MainThreadExecutor;
@@ -32,6 +33,9 @@ import java.util.concurrent.CompletableFuture;
  * - settle_ms: additional delay after cleanup (default: 200 when clean)
  * - camera: render from this camera without moving the player, then put the camera back. A pose {x,y,z,yaw,pitch}
  *   or any camera command action object, e.g. {action:"frame_area", area:{min,max}, yaw, pitch}
+ * - layer: world (default) | gui | tooltip | gui+tooltip; the open screen and/or its tooltip as a .png with alpha,
+ *   without the world or the menu background. split (gui+tooltip): two files, name.gui.png and name.tooltip.png.
+ *   gui_scale 1-8 for this capture only; trim (default true) crops to the drawn pixels plus 8 px.
  *
  * Response:
  * - path: saved file path
@@ -53,6 +57,15 @@ public class ScreenshotCommand implements Command {
         }
 
         String path = params.get("path").getAsString();
+        GuiCapture.Options layer;
+        try {
+            layer = GuiCapture.Options.parse(params, path, false);
+        } catch (IllegalArgumentException e) {
+            return CompletableFuture.failedFuture(e);
+        }
+        if (layer != null) {
+            return GuiCapture.screenshot(java.nio.file.Path.of(path), layer);
+        }
         boolean clean = params.has("clean") && params.get("clean").getAsBoolean();
         int delayMs = params.has("delay_ms") ? params.get("delay_ms").getAsInt() : 0;
         int settleMs = params.has("settle_ms") ? params.get("settle_ms").getAsInt() : (clean ? 200 : 0);

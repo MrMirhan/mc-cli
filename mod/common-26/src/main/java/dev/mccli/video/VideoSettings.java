@@ -22,7 +22,14 @@ public record VideoSettings(String preset, int fps, Integer maxHeight, String co
         String name = str(p, "preset", "high");
         Preset preset = PRESETS.get(name);
         if (preset == null) throw new IllegalArgumentException("preset must be max, high, balanced or light, not \"" + name + "\"");
-        int fps = p.has("fps") ? p.get("fps").getAsInt() : preset.fps();
+        // priority picks the frame rate when fps is not given: smooth motion (60) or a light encode (30)
+        String priority = str(p, "priority", null);
+        Integer priorityFps = priority == null ? null : switch (priority) {
+            case "smooth" -> 60;
+            case "light" -> 30;
+            default -> throw new IllegalArgumentException("priority must be smooth (60 fps) or light (30 fps)");
+        };
+        int fps = p.has("fps") ? p.get("fps").getAsInt() : priorityFps != null ? priorityFps : preset.fps();
         if (fps < 10 || fps > 120) throw new IllegalArgumentException("fps must be 10-120");
         Integer maxHeight = preset.maxHeight();
         String res = str(p, "resolution", null);

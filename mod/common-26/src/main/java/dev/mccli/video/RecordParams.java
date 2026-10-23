@@ -2,19 +2,26 @@ package dev.mccli.video;
 
 import com.google.gson.JsonObject;
 import dev.mccli.camera.CameraMotion;
+import dev.mccli.capture.GuiCapture;
 
 import java.nio.file.Path;
 import java.util.Locale;
 
-/** record start's parameters, validated. {@code durationMs} is the effective length (given, or the camera motion's). */
+/**
+ * record start's parameters, validated. {@code durationMs} is the effective length (given, or the camera motion's).
+ * {@code gui} is set for a transparent layer (.mov or .webm), null for the game frame (.mp4).
+ */
 public record RecordParams(Path savePath, VideoSettings settings, boolean hud, Long durationMs, int maxSeconds,
-                           CameraMotion motion, boolean waitForTerrain, boolean waitForEnd) {
+                           CameraMotion motion, boolean waitForTerrain, boolean waitForEnd, GuiCapture.Options gui) {
     public static final int MAX_SECONDS = 600;
 
     public static RecordParams parse(JsonObject p, CameraMotion motion) {
         String save = VideoSettings.str(p, "path", null);
         if (save == null) throw new IllegalArgumentException("path is required (an absolute .mp4 file)");
-        if (!save.toLowerCase(Locale.ROOT).endsWith(".mp4")) throw new IllegalArgumentException("path must end in .mp4");
+        GuiCapture.Options gui = GuiCapture.Options.parse(p, save, true);
+        if (gui == null && !save.toLowerCase(Locale.ROOT).endsWith(".mp4")) {
+            throw new IllegalArgumentException("path must end in .mp4 (.mov or .webm only with a transparent layer)");
+        }
         VideoSettings settings = VideoSettings.parse(p);
         int maxSeconds = p.has("max_seconds") ? p.get("max_seconds").getAsInt() : 120;
         if (maxSeconds < 1 || maxSeconds > MAX_SECONDS) throw new IllegalArgumentException("max_seconds must be 1-" + MAX_SECONDS);
@@ -26,7 +33,13 @@ public record RecordParams(Path savePath, VideoSettings settings, boolean hud, L
         boolean wait = p.has("wait") && p.get("wait").getAsBoolean();
         if (wait && duration == null) throw new IllegalArgumentException("wait:true needs duration_ms or a camera motion, so the recording ends by itself");
         boolean hud = p.has("hud") && p.get("hud").getAsBoolean();
-        boolean terrain = !p.has("wait_for_terrain") || p.get("wait_for_terrain").getAsBoolean();
-        return new RecordParams(Path.of(save).toAbsolutePath(), settings, hud, duration, maxSeconds, motion, terrain, wait);
+        boolean terrain = gui == null && (!p.has("wait_for_terrain") || p.get("wait_for_terrain").getAsBoolean());
+        return new RecordParams(Path.of(save).toAbsolutePath(), settings, hud, duration, maxSeconds, motion, terrain, wait, gui);
+    }
+
+    /** The container's extension: mp4, mov or webm. */
+    public String container() {
+        String n = savePath.getFileName().toString().toLowerCase(Locale.ROOT);
+        return n.substring(n.lastIndexOf('.') + 1);
     }
 }
