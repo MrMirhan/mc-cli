@@ -37,7 +37,7 @@ public final class Pilot {
     private static Step current;
     private static PilotBrain brain;
     private static HumanModel.Gaze gaze;
-    private static long stepStart, lastTick;
+    private static long stepStart, lastTick, clearedAt, holdUntil;
     private static boolean acted;
     private static String profile = "mid";
     private static int done, failed;
@@ -243,19 +243,37 @@ public final class Pilot {
         }
         if (s.has("item") && !acted && now == stepStart) select(player, s);
         if (now - stepStart > PLACE_TIMEOUT) throw new IllegalStateException("could not place at " + pos.toShortString());
-        if (acted) return false;
-        Direction against = support(mc, pos);
+        if (acted) {
+            mc.options.keyJump.setDown(false);
+            return false;
+        }
+        // a click is handled on the next tick against the crosshair then: hold the head still until it lands
+        if (now < holdUntil) return false;
+        Vec3 eye = player.getEyePosition();
+        Direction against = support(mc, pos, eye);
         if (against == null) throw new IllegalStateException("nothing next to " + pos.toShortString() + " to place against");
+        // the only support is below and its top is above the eye: jump and place on the way up, like a player
+        mc.options.keyJump.setDown(against == Direction.DOWN && !visible(pos, against, eye));
         BlockPos support = pos.relative(against);
         Vec3 face = Vec3.atCenterOf(pos).add(against.getStepX() * 0.5, against.getStepY() * 0.5, against.getStepZ() * 0.5);
         if (player.getEyePosition().distanceTo(face) > REACH) {
             throw new IllegalStateException(pos.toShortString() + " is out of reach; walk_to closer first");
         }
         double off = look(player, face, dt);
-        if (off < 4 && mc.hitResult instanceof BlockHitResult hit && hit.getBlockPos().equals(support)
-            && hit.getDirection() == against.getOpposite()) {
-            click(mc.options.keyUse);
-            acted = true;
+        if (off < 4 && mc.hitResult instanceof BlockHitResult hit) {
+            BlockPos at = hit.getBlockPos();
+            boolean onFace = at.equals(support) && hit.getDirection() == against.getOpposite();
+            // grass or a flower in the target cell: a click on it replaces it with the block, as for a player
+            boolean onReplaceableTarget = at.equals(pos) && !mc.level.getBlockState(pos).isAir();
+            if (onFace || onReplaceableTarget) {
+                click(mc.options.keyUse);
+                acted = true;
+            } else if (!at.equals(support) && mc.level.getBlockState(at).canBeReplaced() && now - clearedAt > 250) {
+                // grass in the way between the eye and the face: clear it first, as a player would
+                click(mc.options.keyAttack);
+                clearedAt = now;
+                holdUntil = now + 120;
+            }
         }
         return false;
     }
@@ -287,12 +305,28 @@ public final class Pilot {
         return Math.hypot(HumanModel.wrap(want[0] - now[0]), want[1] - now[1]);
     }
 
-    /** The side of {@code pos} that has a block to place against: below first, then the sides, then above. */
-    private static Direction support(Minecraft mc, BlockPos pos) {
-        for (Direction d : new Direction[] {Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP}) {
-            if (!mc.level.getBlockState(pos.relative(d)).canBeReplaced()) return d;
+    private static final Direction[] SUPPORT_ORDER = {Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP};
+
+    /**
+     * The side of {@code pos} with a block to place against, preferring a face the eye can see (below first, then the
+     * sides, then above); a hidden face is returned only when no visible one exists.
+     */
+    private static Direction support(Minecraft mc, BlockPos pos, Vec3 eye) {
+        Direction hidden = null;
+        for (Direction d : SUPPORT_ORDER) {
+            if (mc.level.getBlockState(pos.relative(d)).canBeReplaced()) continue;
+            if (visible(pos, d, eye)) return d;
+            if (hidden == null) hidden = d;
         }
-        return null;
+        return hidden;
+    }
+
+    /** Whether the face of the support block on side {@code d} of {@code pos} faces the eye. */
+    private static boolean visible(BlockPos pos, Direction d, Vec3 eye) {
+        Vec3 face = Vec3.atCenterOf(pos).add(d.getStepX() * 0.5, d.getStepY() * 0.5, d.getStepZ() * 0.5);
+        // the face's normal points from the support into pos, the opposite of d
+        double dot = (eye.x - face.x) * -d.getStepX() + (eye.y - face.y) * -d.getStepY() + (eye.z - face.z) * -d.getStepZ();
+        return dot > 0.05;
     }
 
     private static Entity entity(Minecraft mc, String key) {
