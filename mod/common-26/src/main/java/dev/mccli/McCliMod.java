@@ -1,6 +1,7 @@
 package dev.mccli;
 
 import dev.mccli.control.ControlRuntime;
+import dev.mccli.events.EventLog;
 import dev.mccli.server.SocketServer;
 import dev.mccli.util.HeadlessMode;
 import dev.mccli.util.LogCaptureAppender;
@@ -88,7 +89,27 @@ public final class McCliMod {
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         HeadlessMode.tick(client);
         ControlRuntime.tick(client);
+        eventTick(client);
         MainThreadExecutor.processPendingTasks();
+    }
+
+    private static int ticks;
+
+    /** Packet counts once a second; while a video records, the player's position twice a second. */
+    private static void eventTick(net.minecraft.client.Minecraft client) {
+        ticks++;
+        if (ticks % 20 == 0) {
+            EventLog.flushPacketCounts();
+        }
+        if (ticks % 10 == 0 && EventLog.sidecarOpen() && client.player != null) {
+            com.google.gson.JsonObject p = new com.google.gson.JsonObject();
+            p.addProperty("x", Math.round(client.player.getX() * 100) / 100.0);
+            p.addProperty("y", Math.round(client.player.getY() * 100) / 100.0);
+            p.addProperty("z", Math.round(client.player.getZ() * 100) / 100.0);
+            p.addProperty("yaw", Math.round(client.player.getYRot() * 10) / 10.0);
+            p.addProperty("pitch", Math.round(client.player.getXRot() * 10) / 10.0);
+            EventLog.add("player", p);
+        }
     }
 
     private static void installLogCapture() {

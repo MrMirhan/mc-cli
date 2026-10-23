@@ -19,6 +19,7 @@ public enum AccessClass {
         Map.entry("record", OBSERVE), Map.entry("logs", OBSERVE), Map.entry("perf", OBSERVE),
         Map.entry("item", OBSERVE), Map.entry("inventory", OBSERVE), Map.entry("block", OBSERVE),
         Map.entry("entity", OBSERVE), Map.entry("camera", OBSERVE), Map.entry("replay", OBSERVE),
+        Map.entry("events", OBSERVE),
         Map.entry("input", INPUT), Map.entry("interact", INPUT), Map.entry("window", INPUT),
         Map.entry("shader", INPUT), Map.entry("resourcepack", INPUT),
         Map.entry("chat", WORLD), Map.entry("execute", WORLD), Map.entry("server", WORLD),

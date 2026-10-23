@@ -259,6 +259,34 @@ enchantments, attributes), `lore` is the item's own lore component.
 
 `read` is in the `observe` class, every other action in `input` (see PROTOCOL.md, Access and control).
 
+## events
+
+Minecraft 26.x only. What happened in the game, in order, from a ring buffer of the last 5000 events.
+
+```json
+{"command": "events", "params": {"action": "read", "since": 0, "types": ["chat", "screen_open"], "limit": 200}}
+```
+
+returns `{"events": [{"seq": 12, "type": "chat", "at": 1792750000000, "sender": "Steve", "text": "hi"}], "next": 12, "latest": 40}`.
+Pass `next` as `since` to read only what is new.
+
+| type | data |
+|---|---|
+| `chat`, `system` | `sender`, `text` |
+| `title`, `subtitle`, `actionbar` | `text` |
+| `screen_open`, `screen_close` | `screen`, `title` |
+| `agent` | `command`, `action` (this tool's own requests) |
+| `packets` | `counts` per packet id, once a second (with `packets` summary) |
+| `packet` | `id`, one per packet (with `packets` all) |
+| `player` | `x y z yaw pitch`, twice a second while a video records |
+| `record_start`, `record_stop` | `path`, `fps`, `shader` / `reason` |
+
+`{"action": "packets", "mode": "off|summary|all"}` turns packet logging on (off by default). Only packets the
+server sends this client are logged, by id; their contents are not.
+
+While `record` runs, every event is also written to `<video>.events.jsonl` next to the video, each line with `t_ms`
+(time in the video) and `frame`. The `record` result names it as `eventsPath`.
+
 ## time
 
 Get or set world time.
