@@ -189,7 +189,11 @@ mccli camera -45 15
 | `frame_area` | `area` `{min:{x,y,z}, max:{x,y,z}}`, `yaw`, `pitch` (default 30), `distance_scale` (default 1) |
 | `frame_entity` | `entity` (UUID or exact name), `yaw`, `pitch`, `distance_scale` |
 | `orbit` | `center` `{x,y,z}`, `radius`, `durationMs`, `height` (default radius/2), `startAngle` (default: where the camera is), `degrees` (default 360), `ease` (`none` or `inOut`) |
-| `path` | `keyframes` `[{t,x,y,z,yaw,pitch}]` (`t` in ms, 2-64 keyframes), `lookAt` `{x,y,z}` (then yaw/pitch may be left out), `interpolation` (`smooth` or `linear`), `ease` (`inOut` or `none`) |
+| `path` | `keyframes` `[{t,x,y,z,yaw,pitch,fov}]` (`t` in ms, 2-64 keyframes; `fov` on all or none), `lookAt` `{x,y,z}` (then yaw/pitch may be left out), `interpolation` (`smooth` or `linear`), `ease` (`inOut` or `none`) |
+| `follow` (26.x) | `entity` (name, UUID or `@self`), `distance` (6), `height` (2), `angle` (180 behind, 0 in front), `relative_to` (`entity` heading or `world`), `smoothingMs` (250), `durationMs` (0: until reset), `fov` |
+| `attach` (26.x) | rides with the entity's view, so it turns as the player looks: `entity` (`@self`), `forward` (-4), `up` (1), `right` (0), `yawOffset`, `pitchOffset`, `fov` |
+| `shot` (26.x) | promo moves from the current pose: `shot` `push_in` \| `pull_out` \| `crane_up` \| `crane_down` \| `reveal` \| `dolly_zoom`, `target` `{x,y,z}`, `durationMs`, `amount` (distance factor or blocks), `fov` (70), `endFov` (dolly zoom) |
+| `fov` (26.x) | `fov` in degrees for the override camera, `null` for the game's own |
 | `freecam_on` | freeze the camera where it is |
 | `reset` / `freecam_off` | back to the player's view |
 | `status` | the current pose |
@@ -213,11 +217,13 @@ overrides the lookup). The video has the window's resolution: size the window fi
 | parameter | meaning |
 |---|---|
 | `action` | `start`, `stop` or `status` |
-| `path` | absolute `.mp4` path (start) |
+| `path` | absolute `.mp4` path (start); `.mov` (ProRes 4444) or `.webm` (VP9) with a transparent `layer` |
+| `layer` (26.x) | `world` (default), `gui`, `tooltip`, `gui+tooltip`: the open screen and/or its tooltip with alpha, no world; `gui_scale` 1-8 for this recording; no `camera` |
+| `priority` (26.x) | `smooth` (60 fps) or `light` (30 fps) when `fps` is not given |
 | `preset` | `max` (crf 16, slow, 60 fps), `high` (default; crf 20, medium, 30 fps), `balanced` (crf 23, veryfast, 30 fps), `light` (crf 28, veryfast, 30 fps, 720p) |
 | `fps`, `resolution`, `codec`, `crf`, `speed`, `audio`, `audioBitrate` | override one preset value (`resolution`: `source`, `2160p` ... `480p`; `codec`: `h264` or `h265`) |
 | `hud` | keep the HUD (default false: hidden like F1; open menus still draw) |
-| `camera` | an `orbit` or `path` object as in `camera`; it starts with the first frame and sets the length |
+| `camera` | a motion object as in `camera` (`orbit`, `path`, `follow`, `attach`, `shot`); it starts with the first frame and sets the length (`follow`/`attach` without `durationMs` need `duration_ms`) |
 | `duration_ms`, `max_seconds` | stop after this long; hard limit (default 120, at most 600) |
 | `wait` | return when the file is written (needs `duration_ms` or `camera`) |
 | `wait_for_terrain` | wait until the view is built before the first frame (default true) |
@@ -226,7 +232,7 @@ Sound comes from an OpenAL loopback device, so nothing plays through the speaker
 client records sound too. Sound sources are heard from the camera's position.
 
 **Response (stop, or a `wait` start):** `{savedPath, reason, durationMs, fps, width, height, frames, duplicatedFrames,
-droppedFrames, audio, codec, preset, crf, speed, sizeBytes, encodeMs, note?}`. `droppedFrames` above 0 means the
+droppedFrames, audio, codec, preset, crf, speed, sizeBytes, encodeMs, eventsPath, layer?, note?}`. `droppedFrames` above 0 means the
 encoder fell behind: use a faster preset, a lower fps or a lower resolution.
 
 ---

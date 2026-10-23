@@ -11,21 +11,26 @@ import java.util.List;
 public final class CameraPath implements CameraMotion {
     public static final int MAX_KEYFRAMES = 64;
 
-    /** {@code t} in ms; yaw and pitch may be null only when the path has a lookAt point. */
-    public record Keyframe(double t, double x, double y, double z, Float yaw, Float pitch) {}
+    /** {@code t} in ms; yaw and pitch may be null only when the path has a lookAt point; fov on all keyframes or none. */
+    public record Keyframe(double t, double x, double y, double z, Float yaw, Float pitch, Double fov) {
+        public Keyframe(double t, double x, double y, double z, Float yaw, Float pitch) {
+            this(t, x, y, z, yaw, pitch, null);
+        }
+    }
 
-    private final double[] t, x, y, z, yaw, pitch;
+    private final double[] t, x, y, z, yaw, pitch, fov;
     private final boolean smooth, ease;
     private final Vec lookAt;
     private final double duration;
 
-    private CameraPath(double[] t, double[] x, double[] y, double[] z, double[] yaw, double[] pitch, boolean smooth, boolean ease, Vec lookAt) {
+    private CameraPath(double[] t, double[] x, double[] y, double[] z, double[] yaw, double[] pitch, double[] fov, boolean smooth, boolean ease, Vec lookAt) {
         this.t = t;
         this.x = x;
         this.y = y;
         this.z = z;
         this.yaw = yaw;
         this.pitch = pitch;
+        this.fov = fov;
         this.smooth = smooth;
         this.ease = ease;
         this.lookAt = lookAt;
@@ -38,6 +43,12 @@ public final class CameraPath implements CameraMotion {
         if (keys.size() > MAX_KEYFRAMES) throw new IllegalArgumentException("a path takes at most " + MAX_KEYFRAMES + " keyframes");
         int n = keys.size();
         double[] t = new double[n], x = new double[n], y = new double[n], z = new double[n], yaw = new double[n], pitch = new double[n];
+        long withFov = keys.stream().filter(k -> k.fov() != null).count();
+        if (withFov != 0 && withFov != n) throw new IllegalArgumentException("give fov on every keyframe or on none");
+        double[] fov = withFov == 0 ? null : keys.stream().mapToDouble(k -> {
+            if (k.fov() < 1 || k.fov() > 170) throw new IllegalArgumentException("fov must be 1-170 degrees");
+            return k.fov();
+        }).toArray();
         double start = keys.get(0).t();
         for (int i = 0; i < n; i++) {
             Keyframe k = keys.get(i);
@@ -53,16 +64,36 @@ public final class CameraPath implements CameraMotion {
                 pitch[i] = k.pitch();
             }
         }
-        return new CameraPath(t, x, y, z, yaw, pitch, smooth, ease, lookAt);
+        return new CameraPath(t, x, y, z, yaw, pitch, fov, smooth, ease, lookAt);
+    }
+
+    @Override
+    public Double fovAt(double ms) {
+        if (fov == null) return null;
+        int i = segment(ms);
+        return curve(fov, i, local(ms, i));
+    }
+
+    private double timeAt(double ms) {
+        double f = duration <= 0 ? 1 : CameraMotion.clamp01(ms / duration);
+        return (ease ? CameraMotion.easeInOut(f) : f) * duration;
+    }
+
+    private int segment(double ms) {
+        double time = timeAt(ms);
+        int i = 0;
+        while (i < t.length - 2 && time > t[i + 1]) i++;
+        return i;
+    }
+
+    private double local(double ms, int i) {
+        return (timeAt(ms) - t[i]) / (t[i + 1] - t[i]);
     }
 
     @Override
     public Pose at(double ms) {
-        double f = duration <= 0 ? 1 : CameraMotion.clamp01(ms / duration);
-        double time = (ease ? CameraMotion.easeInOut(f) : f) * duration;
-        int i = 0;
-        while (i < t.length - 2 && time > t[i + 1]) i++;
-        double u = (time - t[i]) / (t[i + 1] - t[i]);
+        int i = segment(ms);
+        double u = local(ms, i);
         double px = curve(x, i, u), py = curve(y, i, u), pz = curve(z, i, u);
         if (lookAt != null) {
             CameraMath.Angles a = CameraMath.lookAt(new Vec(px, py, pz), lookAt);

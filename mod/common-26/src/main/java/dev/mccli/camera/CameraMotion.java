@@ -7,8 +7,13 @@ public interface CameraMotion {
 
     long durationMs();
 
-    /** "path" or "orbit", as the camera tool names it. */
+    /** "path", "orbit", "follow" or "attach", as the camera tool names it. */
     String kind();
+
+    /** The field of view in degrees at {@code ms}, or null to keep the game's own. */
+    default Double fovAt(double ms) {
+        return null;
+    }
 
     /** Smoothstep: zero speed at both ends, the middle stays in the middle. */
     static double easeInOut(double f) {

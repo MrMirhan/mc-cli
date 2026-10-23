@@ -27,7 +27,13 @@ import java.util.concurrent.CompletableFuture;
  * - frame_area: area {min:{x,y,z}, max:{x,y,z}}, yaw, pitch (default 30), distance_scale (default 1)
  * - frame_entity: entity (UUID or name), yaw, pitch, distance_scale
  * - orbit: center {x,y,z}, radius, durationMs, height, startAngle, degrees (default 360), ease ("none"|"inOut")
- * - path: keyframes [{t,x,y,z,yaw?,pitch?}], lookAt {x,y,z}, interpolation ("smooth"|"linear"), ease ("inOut"|"none")
+ * - path: keyframes [{t,x,y,z,yaw?,pitch?,fov?}], lookAt {x,y,z}, interpolation ("smooth"|"linear"), ease ("inOut"|"none")
+ * - follow: entity (name, UUID or @self), distance (6), height (2), angle (180 = behind, 0 = in front),
+ *   relative_to entity|world, smoothingMs (250), durationMs (0 = until reset), fov
+ * - attach: rides with the entity's view (@self: turns as the player looks): forward (-4), up (1), right (0),
+ *   yawOffset, pitchOffset, fov
+ * - shot: shot push_in|pull_out|crane_up|crane_down|reveal|dolly_zoom, target {x,y,z}, durationMs, amount, fov, endFov
+ * - fov: fov in degrees for the override camera (null: the game's own)
  * - freecam_on: freeze the camera where it is
  * - reset / freecam_off: back to the player's view
  * - status: the current camera pose
@@ -87,7 +93,8 @@ public class CameraCommand implements Command {
                 AABB box = findEntity(mc, p.get("entity").getAsString()).getBoundingBox().inflate(1.0);
                 frame(mc, p, current, new CameraMath.Vec(box.minX, box.minY, box.minZ), new CameraMath.Vec(box.maxX, box.maxY, box.maxZ));
             }
-            case "path", "orbit" -> CameraOverride.INSTANCE.play(CameraMotionJson.parse(p, current), System.nanoTime());
+            case "path", "orbit", "follow", "attach", "shot" -> CameraOverride.INSTANCE.play(CameraMotionJson.parse(p, current), System.nanoTime());
+            case "fov" -> CameraOverride.INSTANCE.setFov(p.has("fov") && !p.get("fov").isJsonNull() ? p.get("fov").getAsDouble() : null);
             case "freecam_on" -> CameraOverride.INSTANCE.set(current);
             case "freecam_off", "reset" -> CameraOverride.INSTANCE.clear();
             case "status" -> { }
