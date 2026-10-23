@@ -80,4 +80,7 @@ jar {
     from(rootProject.file("../LICENSE")) {
         rename { "${it}_mccli" }
     }
+    from(rootProject.file("../NOTICE")) {
+        rename { "${it}_mccli" }
+    }
 }

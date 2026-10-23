@@ -1,5 +1,7 @@
 package dev.mccli.video;
 
+import dev.mccli.capture.AlphaPixels;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -20,6 +22,7 @@ public final class FrameWriter {
 
     private final OutputStream out;
     private final int frameBytes;
+    private final boolean straightAlpha;
     private final BlockingQueue<Item> queue;
     private final ConcurrentLinkedQueue<byte[]> pool = new ConcurrentLinkedQueue<>();
     private final Thread thread;
@@ -27,9 +30,11 @@ public final class FrameWriter {
     private volatile long written, dropped;
     private volatile IOException failure;
 
-    public FrameWriter(OutputStream out, int frameBytes, int maxQueued) {
+    /** {@code straightAlpha}: frames are the premultiplied GUI canvas; convert them on this thread, off the render thread. */
+    public FrameWriter(OutputStream out, int frameBytes, int maxQueued, boolean straightAlpha) {
         this.out = out;
         this.frameBytes = frameBytes;
+        this.straightAlpha = straightAlpha;
         this.queue = new ArrayBlockingQueue<>(Math.max(1, maxQueued) + 1);   // +1: room for END
         this.thread = Thread.ofPlatform().daemon().name("MC-CLI video writer").start(this::run);
     }
@@ -81,6 +86,7 @@ public final class FrameWriter {
                 if (item == END) return;
                 if (failure != null) continue;   // drain after a failure; finish() reports it
                 try {
+                    if (straightAlpha && item.data() != null) AlphaPixels.unpremultiply(item.data());
                     byte[] fill = previous != null ? previous : item.data();
                     for (int i = 0; i < item.lead() && fill != null; i++) write(fill);
                     if (item.data() == null) continue;

@@ -52,6 +52,12 @@ public final class Platform {
         player.swing(InteractionHand.MAIN_HAND, player.getMainHandItem().getAttackAnimation(), false);
     }
 
+    /** An offscreen RGBA render target with depth, for drawing the GUI a second time. */
+    public static com.mojang.blaze3d.pipeline.RenderTarget newCanvas(String name, int width, int height) {
+        return new com.mojang.blaze3d.pipeline.TextureTarget(name, width, height,
+            com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM, com.mojang.renderpearl.api.GpuFormat.D32_FLOAT);
+    }
+
     /** Move the cursor to window coordinates through the window's own cursor callback. */
     public static void moveCursor(Minecraft client, long windowHandle, double x, double y) {
         MouseHandler mouse = client.mouseHandler;

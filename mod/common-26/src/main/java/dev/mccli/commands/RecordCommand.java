@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import dev.mccli.camera.CameraMotionJson;
 import dev.mccli.util.MainThreadExecutor;
 import dev.mccli.util.TerrainWait;
+import dev.mccli.video.FfmpegArgs;
 import dev.mccli.video.FfmpegLocator;
 import dev.mccli.video.RecordParams;
 import dev.mccli.video.Recorder;
@@ -18,8 +19,11 @@ import java.util.concurrent.CompletableFuture;
  * Params:
  * - action: start | stop | status
  * start:
- * - path: absolute .mp4 path (required)
+ * - path: absolute .mp4 path (required); .mov (ProRes 4444) or .webm (VP9) with a transparent layer
  * - preset: max | high (default) | balanced | light; fps, resolution, codec (h264|h265), crf, speed, audio, audioBitrate
+ * - priority: smooth (60 fps) | light (30 fps), when fps is not given
+ * - layer: world (default) | gui | tooltip | gui+tooltip: the open screen and/or its tooltip with alpha, full
+ *   window size; gui_scale 1-8 for this recording only. No camera with a transparent layer.
  * - hud: keep the HUD in the video (default false)
  * - camera: a camera motion, see the camera command (orbit / path); it starts with the first frame
  * - duration_ms: stop after this long (default: the camera motion's length); max_seconds: hard limit (default 120)
@@ -47,14 +51,20 @@ public class RecordCommand implements Command {
 
     private CompletableFuture<JsonObject> start(JsonObject p) {
         JsonObject camera = p.has("camera") && p.get("camera").isJsonObject() ? p.getAsJsonObject("camera") : null;
+        RecordParams checked;
         try {
-            RecordParams.parse(p, camera == null ? null : CameraMotionJson.parse(camera, null));
+            checked = RecordParams.parse(p, camera == null ? null : CameraMotionJson.parse(camera, null));
         } catch (RuntimeException e) {
             return CompletableFuture.failedFuture(e);
         }
         return CompletableFuture.supplyAsync(() -> {
             try {
                 Path ffmpeg = FfmpegLocator.require();
+                String encoder = FfmpegArgs.encoderFor(checked.container(), checked.settings());
+                if (encoder != null && !FfmpegArgs.hasEncoder(ffmpeg, encoder)) {
+                    throw new IllegalStateException("FFMPEG_FAILED: this ffmpeg has no " + encoder + " encoder ("
+                        + ffmpeg + "); use the other format or a full ffmpeg build");
+                }
                 RecordParams params = MainThreadExecutor.submit(() -> {
                     Minecraft mc = Minecraft.getInstance();
                     if (mc.player == null) throw new IllegalStateException("Player not in game");

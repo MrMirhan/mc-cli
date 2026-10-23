@@ -4,6 +4,8 @@ import com.google.gson.JsonObject;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import dev.mccli.McCliMod;
 import dev.mccli.camera.CameraOverride;
+import dev.mccli.capture.GuiCanvas;
+import dev.mccli.capture.GuiScale;
 import dev.mccli.util.ClientCompat;
 import dev.mccli.mixin.SoundEngineAccessor;
 import dev.mccli.mixin.SoundManagerAccessor;
@@ -66,6 +68,7 @@ public final class Recorder {
         Path videoTemp, wavTemp;
         int pendingRepeats;
         long duplicated;
+        int guiScaleBefore = -1;
         final Deque<String> stderr = new ArrayDeque<>();
 
         Session(RecordParams params, Path ffmpeg) {
@@ -104,6 +107,12 @@ public final class Recorder {
                 CameraOverride.INSTANCE.get(), audio && master.get() == 0 ? master.get() : null);
         session = s;
         try {
+            if (params.gui() != null) {
+                if (params.gui().layer().needsScreen() && ClientCompat.screen(mc) == null) {
+                    throw err("NO_SCREEN", "No screen is open.", "Open the menu first, then record the gui layer.");
+                }
+                if (params.gui().guiScale() != null) s.guiScaleBefore = GuiScale.apply(mc, params.gui().guiScale());
+            }
             if (!params.hud()) ClientCompat.setHudHidden(mc, true);
             if (params.motion() != null) CameraOverride.INSTANCE.set(params.motion().at(0));
             if (audio) {
@@ -155,13 +164,13 @@ public final class Recorder {
             Path dir = p.savePath().getParent();
             if (dir != null) Files.createDirectories(dir);
             String base = "." + p.savePath().getFileName() + "." + Long.toHexString(ThreadLocalRandom.current().nextLong());
-            s.videoTemp = p.savePath().resolveSibling(base + ".video.mp4");
+            s.videoTemp = p.savePath().resolveSibling(base + ".video." + p.container());
             s.wavTemp = s.audio ? p.savePath().resolveSibling(base + ".wav") : null;
-            List<String> cmd = FfmpegArgs.video(s.ffmpeg.toString(), s.width, s.height, p.settings(), s.videoTemp);
+            List<String> cmd = FfmpegArgs.video(s.ffmpeg.toString(), s.width, s.height, p.settings(), s.videoTemp, p.container());
             s.process = new ProcessBuilder(cmd).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
             Thread.ofPlatform().daemon().name("MC-CLI ffmpeg log").start(() -> readStderr(s));
             int frameBytes = s.width * s.height * 4;
-            s.writer = new FrameWriter(s.process.getOutputStream(), frameBytes, (int) Math.max(2, Math.min(64, QUEUE_BYTES / frameBytes)));
+            s.writer = new FrameWriter(s.process.getOutputStream(), frameBytes, (int) Math.max(2, Math.min(64, QUEUE_BYTES / frameBytes)), p.gui() != null);
             s.pacer = new FramePacer(p.settings().fps());
             s.t0 = System.nanoTime();
             if (s.audio) {
@@ -185,6 +194,7 @@ public final class Recorder {
         o.addProperty("fps", p.settings().fps());
         o.addProperty("preset", p.settings().preset());
         o.addProperty("audio", s.audio);
+        if (p.gui() != null) o.addProperty("layer", p.gui().layer().name().toLowerCase(java.util.Locale.ROOT).replace('_', '+'));
         if (p.durationMs() != null) o.addProperty("durationMs", p.durationMs());
         o.addProperty("maxSeconds", p.maxSeconds());
         if (s.noSoundFiles) o.addProperty("note", NO_SOUND_FILES);
@@ -222,7 +232,12 @@ public final class Recorder {
         s.duplicated += repeats - 1;
         s.pendingRepeats += repeats;
         try {
-            FrameReader.INSTANCE.read(target, pixels -> {
+            RenderTarget source = target;
+            if (s.params.gui() != null) {
+                source = GuiCanvas.canvas(target.width, target.height, 0);
+                GuiCanvas.draw(s.params.gui().layer(), source);
+            }
+            FrameReader.INSTANCE.read(source, pixels -> {
                 s.pendingRepeats -= repeats;
                 if (s.process != null) s.writer.submit(pixels, repeats);
             });
@@ -339,8 +354,8 @@ public final class Recorder {
             if (s.writer.failure() != null) throw failed(s, "writing frames to ffmpeg failed: " + s.writer.failure().getMessage());
             Path result = s.videoTemp;
             if (s.wavTemp != null && !s.soundLost) {
-                Path muxed = s.videoTemp.resolveSibling(s.videoTemp.getFileName() + ".mux.mp4");
-                Process mux = new ProcessBuilder(FfmpegArgs.mux(s.ffmpeg.toString(), s.videoTemp, s.wavTemp, p.settings().audioKbps(), muxed))
+                Path muxed = s.videoTemp.resolveSibling(s.videoTemp.getFileName() + ".mux." + p.container());
+                Process mux = new ProcessBuilder(FfmpegArgs.mux(s.ffmpeg.toString(), s.videoTemp, s.wavTemp, p.settings().audioKbps(), muxed, p.container()))
                         .redirectErrorStream(true).start();
                 String out = new String(mux.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
                 if (!mux.waitFor(2, TimeUnit.MINUTES) || mux.exitValue() != 0) {
@@ -363,7 +378,12 @@ public final class Recorder {
             o.addProperty("duplicatedFrames", s.duplicated);
             o.addProperty("droppedFrames", s.writer.dropped());
             o.addProperty("audio", s.audio && !s.soundLost);
-            o.addProperty("codec", p.settings().codec());
+            o.addProperty("codec", switch (p.container()) {
+                case "mov" -> "prores_4444";
+                case "webm" -> "vp9";
+                default -> p.settings().codec();
+            });
+            if (p.gui() != null) o.addProperty("layer", p.gui().layer().name().toLowerCase(java.util.Locale.ROOT).replace('_', '+'));
             o.addProperty("preset", p.settings().preset());
             o.addProperty("crf", p.settings().crf());
             o.addProperty("speed", p.settings().speed());
@@ -419,6 +439,11 @@ public final class Recorder {
             }
         }
         if (s.audio) closeLoopback(mc);
+        if (s.guiScaleBefore > 0) {
+            mc.options.guiScale().set(s.guiScaleBefore);
+            mc.resizeGui();
+            s.guiScaleBefore = -1;
+        }
         if (saved == null) return;
         ClientCompat.setHudHidden(mc, saved.hudHidden());
         if (s.params.motion() != null) {
@@ -437,7 +462,7 @@ public final class Recorder {
     }
 
     private static void deleteTemps(Session s) {
-        for (Path p : new Path[] {s.videoTemp, s.wavTemp, s.videoTemp == null ? null : s.videoTemp.resolveSibling(s.videoTemp.getFileName() + ".mux.mp4")}) {
+        for (Path p : new Path[] {s.videoTemp, s.wavTemp, s.videoTemp == null ? null : s.videoTemp.resolveSibling(s.videoTemp.getFileName() + ".mux." + s.params.container())}) {
             if (p == null) continue;
             try {
                 Files.deleteIfExists(p);
