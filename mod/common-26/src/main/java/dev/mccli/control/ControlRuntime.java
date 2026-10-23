@@ -19,10 +19,12 @@ public final class ControlRuntime {
     private static AccessToken token;
     private static final AtomicBoolean asking = new AtomicBoolean();
     private static boolean pauseKeyDown;
+    private static Path configDir = Path.of("config");
 
     private ControlRuntime() {}
 
     public static void init(Path configDir) {
+        ControlRuntime.configDir = configDir;
         policy = ControlConfig.load(configDir, HeadlessMode.isRequested());
         try {
             token = AccessToken.load(configDir);
@@ -35,6 +37,11 @@ public final class ControlRuntime {
 
     public static ControlPolicy policy() {
         return policy;
+    }
+
+    /** The loader's config folder (mccli.json, mccli-token). */
+    public static Path configDir() {
+        return configDir;
     }
 
     public static AccessToken token() {

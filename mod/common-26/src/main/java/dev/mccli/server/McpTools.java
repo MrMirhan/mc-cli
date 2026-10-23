@@ -49,6 +49,14 @@ final class McpTools {
         add("gui", "The open screen: read (widgets, slots with lore and tooltip), hover, click, right_click, shift_click, "
             + "button {text}, close.", "{" + ACTION + ",\"slot\":{\"type\":\"integer\"},\"text\":{\"type\":\"string\"}}");
         add("input", "Mouse and keys as the window gets them: mouse_move, mouse_click, key, type, slots, slot_click.", "{" + ACTION + "}", "action");
+        add("scan", "The blocks around the player as text layers (a palette, then rows per y), with position, facing and the "
+            + "crosshair block: read the surroundings without a screenshot.",
+            "{\"radius\":{\"type\":\"integer\"},\"below\":{\"type\":\"integer\"},\"above\":{\"type\":\"integer\"}}");
+        add("pilot", "Play with the player's own keys and crosshair, tick by tick, like a person; returns at once and keeps "
+            + "going. run {steps:[{do:walk_to|look_at|place|break|select|jump|wait|follow|fight, ...}], profile}, status, stop. "
+            + "Send many steps in one run (a wall, a path) and check with status, scan or a screenshot. Only in singleplayer "
+            + "or on servers in config/mccli.json pilotServers.",
+            "{" + ACTION + ",\"steps\":{\"type\":\"array\",\"items\":{\"type\":\"object\"}},\"profile\":{\"type\":\"string\"}}", "action");
         add("events", "What happened, in order: read {since, types, limit} returns events and next; packets {mode off|summary|all}.",
             "{" + ACTION + ",\"since\":{\"type\":\"integer\"},\"types\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"limit\":{\"type\":\"integer\"}}");
         add("chat", "Chat: send {message}, history {limit, type}, clear.", "{" + ACTION + "}", "action");

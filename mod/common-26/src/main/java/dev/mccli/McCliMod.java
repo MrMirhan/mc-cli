@@ -97,6 +97,7 @@ public final class McCliMod {
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
         HeadlessMode.tick(client);
         ControlRuntime.tick(client);
+        dev.mccli.pilot.Pilot.tick(client);
         eventTick(client);
         MainThreadExecutor.processPendingTasks();
     }

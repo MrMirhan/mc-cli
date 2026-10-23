@@ -265,6 +265,50 @@ enchantments, attributes), `lore` is the item's own lore component.
 
 `read` is in the `observe` class, every other action in `input` (see PROTOCOL.md, Access and control).
 
+## scan
+
+Minecraft 26.x only. The blocks around the player in one compact answer, so a tool reads its surroundings without
+a screenshot. `{"command": "scan", "params": {"radius": 6, "below": 2, "above": 4}}` (radius 1-16; at most 40,000
+blocks) returns `origin` (the minimum corner), `size`, `palette` (`{"#": "minecraft:stone", ".": "air"}`), and
+`layers`: one entry per y from bottom to top, each a list of rows from north to south, each row a string from west
+to east. Also `player`, `facing`, `yaw`, `pitch` and the `crosshair` block with its face. `scan` is in the
+`observe` class.
+
+## pilot
+
+Minecraft 26.x only. Plays steps with the player's own key mappings and crosshair, one decision per tick, with a
+person's head movement (a spring-damped turn, aim wander, reaction delay). It returns at once and keeps playing,
+so a tool can send a whole wall or path in one call and check progress with `status`, `scan`, `events` or a
+screenshot.
+
+```json
+{"command": "pilot", "params": {"action": "run", "profile": "tryhard", "steps": [
+  {"do": "select", "item": "minecraft:oak_planks"},
+  {"do": "walk_to", "x": 10, "z": 4},
+  {"do": "place", "x": 11, "y": 64, "z": 4},
+  {"do": "place", "x": 11, "y": 65, "z": 4},
+  {"do": "break", "x": 12, "y": 64, "z": 4}]}}
+```
+
+| step | params | does |
+|---|---|---|
+| `walk_to` | `x`, `z` | walks there, jumps one-block steps; fails after 60 s |
+| `look_at` | `x`, `y`, `z` | turns the head to a point |
+| `place` | `x`, `y`, `z`, `item?` | looks at a neighbour's face and right-clicks, so the held block lands at that position; within reach (about 4.4 blocks) |
+| `break` | `x`, `y`, `z` | holds attack on the block until it is gone |
+| `select` | `slot` (0-8) or `item` | picks a hotbar slot |
+| `jump`, `wait` | `ms` for wait | |
+| `follow` | `target`, `distance` (3), `seconds` | keeps near a player or mob |
+| `fight` | `target`, `style` (`1.8`/`1.9`), `seconds`, `profile` | close-range fighting: CPS or cooldown, strafes, w-taps, crits |
+
+`profile` (`rookie`, `mid`, `tryhard`) sets how fast the head turns and how well it aims. `status` returns
+`running`, the current step, `queued`, `done`, `failed`, `lastError`; `stop` stops and lets go of every key. Each
+finished step adds `pilot_done` or `pilot_failed` to the event log; a failed step clears the steps after it.
+
+The pilot acts only in a singleplayer world or on a server whose exact `host:port` is in `config/mccli.json`
+`"pilotServers": ["127.0.0.1:25566"]`. Automated movement and clicks on any other server count as cheating. F8
+pauses it and an open screen holds it; a person pressing keys takes over. `run` is in the `world` class.
+
 ## events
 
 Minecraft 26.x only. What happened in the game, in order, from a ring buffer of the last 5000 events.

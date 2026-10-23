@@ -19,6 +19,7 @@
     "GuiRenderStateAccessor",
     "HudBadgeMixin",
     "HudTitleMixin",
+    "KeyMappingAccessor",
     "KeyboardHandlerInvoker",
     "LibraryMixin",
     "MouseHandlerInvoker",

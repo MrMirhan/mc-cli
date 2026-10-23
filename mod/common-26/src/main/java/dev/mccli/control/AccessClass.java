@@ -19,7 +19,7 @@ public enum AccessClass {
         Map.entry("record", OBSERVE), Map.entry("logs", OBSERVE), Map.entry("perf", OBSERVE),
         Map.entry("item", OBSERVE), Map.entry("inventory", OBSERVE), Map.entry("block", OBSERVE),
         Map.entry("entity", OBSERVE), Map.entry("replay", OBSERVE),
-        Map.entry("events", OBSERVE),
+        Map.entry("events", OBSERVE), Map.entry("scan", OBSERVE),
         Map.entry("input", INPUT), Map.entry("interact", INPUT), Map.entry("window", INPUT),
         Map.entry("shader", INPUT), Map.entry("resourcepack", INPUT),
         Map.entry("chat", WORLD), Map.entry("execute", WORLD), Map.entry("server", WORLD),
@@ -31,6 +31,11 @@ public enum AccessClass {
         if ("gui".equals(command)) {
             String action = params != null && params.has("action") ? params.get("action").getAsString() : "read";
             return "read".equals(action) ? OBSERVE : INPUT;
+        }
+        if ("pilot".equals(command)) {
+            // status and stop only read or halt; run moves the player and acts in the world
+            String action = params != null && params.has("action") ? params.get("action").getAsString() : "status";
+            return "run".equals(action) ? WORLD : OBSERVE;
         }
         if ("camera".equals(command)) {
             return params != null && params.has("action") ? OBSERVE : INPUT;
