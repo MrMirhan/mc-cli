@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 
 HOME = Path.home()
+# The launcher's licence file in the home folder (from MCCLI_BEDROCK_CREDENTIALS).
+LICENCE = ".local/share/mcpelauncher/pass.token"
 DATA = HOME / ".local/share/mcpelauncher"
 WIDTH, HEIGHT = 1280, 720
 # Where the menus are, in the window's own pixels, at the default 1280 x 720 size.
@@ -176,7 +178,15 @@ def launch(version: str | None = None, width: int = WIDTH, height: int = HEIGHT,
     if proc.poll() is not None:
         raise RuntimeError(f"The client stopped (exit {proc.returncode}); see {_state() / 'client.log'}")
     time.sleep(3)
-    return {"started": True, "running": True, "pid": proc.pid, "window": window(), "version": version, "copied": copied, "popups_closed": close_popups()}
+    popups = close_popups()
+    win = window()
+    if not win:
+        # Without its licence the client runs on, but never opens the game's window.
+        quit_client()
+        why = (f"it has no licence: set MCCLI_BEDROCK_CREDENTIALS to the folder with the launcher's licence files (docs/BEDROCK.md)"
+               if not (HOME / LICENCE).exists() else f"see {_state() / 'client.log'}")
+        raise RuntimeError(f"The client shows no window: {why}")
+    return {"started": True, "running": True, "pid": proc.pid, "window": win, "version": version, "copied": copied, "popups_closed": popups}
 
 
 def status() -> dict:
@@ -348,6 +358,7 @@ def add_parser(sub) -> None:
     launch_p.add_argument("--version", help="Game version (default: the newest there are files for)")
     launch_p.add_argument("--width", type=int, default=WIDTH)
     launch_p.add_argument("--height", type=int, default=HEIGHT)
+    launch_p.add_argument("--wait", type=float, default=90.0, help="Seconds to wait for its window")
     act.add_parser("status", help="Whether it runs, its window, the versions there are")
     shot_p = act.add_parser("screenshot", help="A PNG of the client's window")
     shot_p.add_argument("--path")
@@ -381,7 +392,7 @@ def run(args) -> int:
         if args.action == "bridge":
             return bridge(args.target, args.name)
         result = {
-            "launch": lambda: launch(args.version, args.width, args.height),
+            "launch": lambda: launch(args.version, args.width, args.height, args.wait),
             "status": status,
             "screenshot": lambda: screenshot(args.path),
             "click": lambda: click(args.x, args.y, args.button, args.double),
