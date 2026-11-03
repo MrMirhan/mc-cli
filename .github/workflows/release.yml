@@ -4,7 +4,14 @@ on:
   push:
     tags:
       - 'v*'
+  # A run started by hand with a version builds that version and opens a draft release whose v<version> tag GitHub
+  # creates when the draft is published. Without a version it only builds the jars.
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, without the v (for example 1.8.0). Empty: build only.'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -41,12 +48,27 @@ jobs:
 
       - name: Get version from tag
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          elif [ -n "$INPUT_VERSION" ]; then
+            echo "version=$INPUT_VERSION" >> $GITHUB_OUTPUT
           else
             echo "version=dev" >> $GITHUB_OUTPUT
           fi
+
+      # The jars carry mod_version; a release must not ship jars of another version.
+      - name: Check the version matches the mod and the CLI
+        if: steps.version.outputs.version != 'dev'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mod=$(sed -n 's/^mod_version=//p' mod/gradle.properties)
+          cli=$(sed -n 's/^version = "\(.*\)"/\1/p' cli/pyproject.toml)
+          [ "$VERSION" = "$mod" ] || { echo "version $VERSION is not mod_version $mod" >&2; exit 1; }
+          [ "$VERSION" = "$cli" ] || { echo "version $VERSION is not the CLI version $cli" >&2; exit 1; }
 
       - name: Prepare artifact
         run: |
@@ -58,17 +80,19 @@ jobs:
           cp mod/neoforge-26/build/libs/mccli-neoforge-26.*.jar release-files/
           # Remove sources and javadoc jars if present
           rm -f release-files/*-sources.jar release-files/*-javadoc.jar
+          # The Bedrock bridge's Node files, for a CLI installed with pip (MCCLI_BEDROCK_NODE points at them)
+          git archive --format=tar.gz --prefix=mccli-bedrock-bridge/ -o release-files/mccli-bedrock-bridge-${{ steps.version.outputs.version }}.tar.gz HEAD bedrock
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: mccli-mod
-          path: release-files/*.jar
+          path: release-files/*
 
   release:
     needs: [build-mod]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.version != ''
 
     steps:
       - name: Download artifacts
@@ -79,7 +103,7 @@ jobs:
       - name: Flatten artifacts
         run: |
           mkdir -p release-files
-          find artifacts -name "*.jar" -exec cp {} release-files/ \;
+          find artifacts -type f \( -name "*.jar" -o -name "*.tar.gz" \) -exec cp {} release-files/ \;
           ls -la release-files/
 
       - name: Generate checksums
@@ -92,7 +116,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          name: MC-CLI ${{ github.ref_name }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
+          target_commitish: ${{ github.sha }}
+          name: MC-CLI ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
           body: |
             ## MC-CLI Minecraft Mod
 
@@ -132,7 +158,15 @@ jobs:
                - **Linux**: `~/.minecraft/mods/`
                - **macOS**: `~/Library/Application Support/minecraft/mods/`
                - **Windows**: `%APPDATA%\.minecraft\mods\`
-            3. Install the Python CLI: `pip install git+https://github.com/Th0rgal/mc-cli.git#subdirectory=cli`
+            3. Install the Python CLI: `pip install git+https://github.com/MrMirhan/mc-cli.git@${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}#subdirectory=cli`
+
+            ## Bedrock Edition
+
+            `mccli bedrock` drives the real Bedrock client on Linux (mcpelauncher) and runs the LAN bridge that takes it to a
+            server, offline or signed in with Microsoft (`mccli bedrock login`). The bridge reports the client's game
+            (`mccli bedrock state`, `forms`, `form-respond`). With a CLI installed by pip, unpack
+            `mccli-bedrock-bridge-*.tar.gz` and set `MCCLI_BEDROCK_NODE` to its `mccli-bedrock-bridge/bedrock` folder.
+            Requirements and setup: [docs/BEDROCK.md](https://github.com/MrMirhan/mc-cli/blob/main/docs/BEDROCK.md).
 
             ## Checksums
 
