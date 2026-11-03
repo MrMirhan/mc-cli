@@ -53,6 +53,22 @@ class BedrockTest(unittest.TestCase):
             with mock.patch.object(bedrock, "_pid", return_value=None):
                 bedrock.launch("1.26.99")
 
+    def test_launch_without_a_window_stops_the_client_and_names_the_missing_licence(self):
+        (self.root / "game/versions/1.26.60.4/lib").mkdir(parents=True)
+        home = self.root / "home"
+        proc = mock.Mock(pid=7, poll=mock.Mock(return_value=None))
+        with mock.patch.object(bedrock, "HOME", home), mock.patch.object(bedrock, "_pid", return_value=None), \
+             mock.patch.object(bedrock, "clients", return_value=[]), mock.patch.object(bedrock, "window", return_value=None), \
+             mock.patch.object(bedrock, "close_popups", return_value=0), mock.patch.object(bedrock, "quit_client") as quit_client, \
+             mock.patch.object(bedrock.subprocess, "Popen", return_value=proc), mock.patch.object(bedrock.time, "sleep"):
+            with self.assertRaisesRegex(RuntimeError, "shows no window: it has no licence: set MCCLI_BEDROCK_CREDENTIALS"):
+                bedrock.launch(wait=0)
+            quit_client.assert_called_once()
+            (home / bedrock.LICENCE).parent.mkdir(parents=True)
+            (home / bedrock.LICENCE).write_text("licence")
+            with self.assertRaisesRegex(RuntimeError, "shows no window: see .*client.log"):
+                bedrock.launch(wait=0)
+
     def test_a_click_outside_the_window_is_refused_and_one_inside_comes_slowly_at_its_screen_place(self):
         calls = []
         with mock.patch.object(bedrock, "window", return_value="42"), \

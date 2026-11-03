@@ -28,7 +28,7 @@ All of them print one JSON object: `{"success", "data", "error"}`.
 
 | Command | What it does |
 | --- | --- |
-| `mccli bedrock launch [--version V] [--width 1280 --height 720]` | Starts the client (the newest version there are files for) and waits for its window. Closes the launcher's error popups, such as a missing sound device. |
+| `mccli bedrock launch [--version V] [--width 1280 --height 720] [--wait S]` | Starts the client (the newest version there are files for) and waits for its window (90 seconds). Closes the launcher's error popups, such as a missing sound device. If no window opens, it stops the client and says why: without its licence, the client opens no window. |
 | `mccli bedrock status` | Whether it runs, its window and its place, and the versions there are. |
 | `mccli bedrock screenshot [--path P]` | A PNG of the client's window, as the player sees it. |
 | `mccli bedrock click X Y [--button left\|right] [--double]` | Clicks at X, Y of the window, in the screenshot's pixels. |
