@@ -30,7 +30,15 @@ WIDTH, HEIGHT = 1280, 720
 # Where the menus are, in the window's own pixels, at the default 1280 x 720 size.
 PLAY_BUTTON = (639, 372)
 FIRST_LAN_WORLD = (178, 364)
-POPUP_CLOSE = (977, 234)
+GREEN, LIGHT = (60, 133, 39), (208, 209, 212)
+PACK_GREEN, PACK_LIGHT = (33, 131, 6), (198, 198, 198)
+# The dialogs the client opens on its own, at the default size: how to know one (pixels and their
+# colours) and where to click: it closes the offers, and takes the server's resource packs.
+DIALOGS = [
+    ("welcome sign-in", [((785, 463), GREEN), ((1215, 463), GREEN), ((785, 519), LIGHT), ((1215, 519), LIGHT)], (999, 519)),
+    ("marketplace offer", [((320, 493), GREEN), ((960, 493), GREEN)], (977, 234)),
+    ("resource packs: download and join", [((360, 410), PACK_GREEN), ((920, 410), PACK_GREEN), ((360, 474), PACK_LIGHT), ((920, 474), PACK_LIGHT)], (639, 410)),
+]
 
 
 def _game() -> Path:
@@ -97,9 +105,24 @@ def _pid() -> int | None:
         return None
 
 
+def clients() -> list[int]:
+    """The pids of the Bedrock clients running here, ours or left from before."""
+    found = []
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            argv0 = (proc / "cmdline").read_bytes().split(b"\0")[0]
+        except OSError:
+            continue
+        if argv0.endswith(b"mcpelauncher-client") and int(proc.name) != os.getpid():
+            found.append(int(proc.name))
+    return found
+
+
 def window() -> str | None:
-    """The client's window id, when it shows one."""
-    out = _run("xdotool", "search", "--onlyvisible", "--name", "^Minecraft$", check=False).split()
+    """The client's window id, when it shows one: the window of the client mccli started."""
+    pid = _pid()
+    by_pid = ["--pid", str(pid)] if pid else []
+    out = _run("xdotool", "search", "--onlyvisible", *by_pid, "--name", "^Minecraft$", check=False).split()
     return out[0] if out else None
 
 
@@ -131,6 +154,8 @@ def launch(version: str | None = None, width: int = WIDTH, height: int = HEIGHT,
     """Starts the client, unless it runs; waits for its window."""
     if _pid() and window():
         return {"started": False, "running": True, "pid": _pid(), "window": window()}
+    if clients():
+        quit_client()  # a client left from before (its window is not ours to drive)
     found = versions()
     version = version or (found[0] if found else None)
     if not version or version not in found:
@@ -238,32 +263,67 @@ def chat(message: str) -> dict:
     return {"sent": message}
 
 
-def join_lan(index: int = 0, wait: float = 60.0) -> dict:
+def pixel(png: str, x: int, y: int) -> tuple[int, int, int]:
+    """The colour of one pixel of a PNG (ImageMagick)."""
+    out = _run("convert", png, "-crop", f"1x1+{x}+{y}", "txt:-")
+    m = re.search(r"\((\d+),(\d+),(\d+)", out.splitlines()[-1] if out else "")
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else (-1, -1, -1)
+
+
+def dismiss(rounds: int = 3) -> list[str]:
+    """Closes the dialogs the client opens on its own (the sign-in offer, the Marketplace offer), as it
+    knows them at the default size; the ones it closed."""
+    closed = []
+    close_popups()
+    for _ in range(rounds):
+        shot = screenshot(str(_state() / "dismiss.png"))["path"]
+        if (geometry(_window_or_fail())[2:]) != (WIDTH, HEIGHT):
+            return closed
+        near = lambda got, want: all(abs(a - b) <= 30 for a, b in zip(got, want))
+        found = next((d for d in DIALOGS if all(near(pixel(shot, x, y), c) for (x, y), c in d[1])), None)
+        if not found:
+            return closed
+        click(*found[2])
+        closed.append(found[0])
+        time.sleep(2)
+    return closed
+
+
+def join_lan(index: int = 0, wait: float = 45.0) -> dict:
     """From the title screen: Play, then the LAN world at `index` (the bridge's), at the default size.
-    Says what the screen shows after; check it with a screenshot."""
+    Closes the dialogs it knows on the way. Says what the screen shows after; check it with a screenshot."""
     win = _window_or_fail()
     _, _, w, h = geometry(win)
     if (w, h) != (WIDTH, HEIGHT):
         raise RuntimeError(f"join_lan knows the menus at {WIDTH} x {HEIGHT}; the window is {w} x {h}: click your way with click and screenshot")
-    close_popups()
-    click(*POPUP_CLOSE)
-    time.sleep(1)
+    closed = dismiss()
     click(*PLAY_BUTTON)
     time.sleep(5)
+    closed += dismiss()
     click(FIRST_LAN_WORLD[0] + 300 * index, FIRST_LAN_WORLD[1])
+    time.sleep(8)
+    closed += dismiss()  # the server's resource packs
     time.sleep(min(wait, 60.0))
-    return {"joined": index, **screenshot()}
+    return {"joined": index, "closed": closed, **screenshot()}
 
 
 def quit_client() -> dict:
-    pid = _pid()
-    if pid:
-        try:
-            os.killpg(pid, signal.SIGTERM)
-        except OSError:
-            os.kill(pid, signal.SIGTERM)
+    """Stops every Bedrock client here: asked first, then made to (the client may not stop when asked)."""
+    pids = clients()
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for pid in clients():
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                pass
+        deadline = time.time() + 5
+        while clients() and time.time() < deadline:
+            time.sleep(0.5)
+        if not clients():
+            break
     (_state() / "pid").unlink(missing_ok=True)
-    return {"stopped": bool(pid)}
+    close_popups()
+    return {"stopped": len(pids)}
 
 
 def logs(lines: int = 50) -> dict:
