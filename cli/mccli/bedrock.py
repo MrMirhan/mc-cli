@@ -100,8 +100,15 @@ def _env() -> dict:
     return env
 
 
+NEEDS = {"xdotool": "xdotool", "xwininfo": "x11-utils", "import": "ImageMagick", "identify": "ImageMagick"}
+
+
 def _run(*args: str, check: bool = True) -> str:
-    return subprocess.run(list(args), capture_output=True, text=True, timeout=30, env=_env(), check=check).stdout
+    try:
+        return subprocess.run(list(args), capture_output=True, text=True, timeout=30, env=_env(), check=check).stdout
+    except FileNotFoundError:
+        raise RuntimeError(f"{args[0]} is not installed: the real Bedrock client needs {NEEDS.get(args[0], args[0])} "
+                           "(apt install xdotool x11-utils imagemagick) and an X display") from None
 
 
 def _pid() -> int | None:
@@ -377,24 +384,96 @@ def logs(lines: int = 50) -> dict:
     return {"lines": keep}
 
 
-def _bridge_script() -> Path:
-    script = Path(__file__).resolve().parent.parent.parent / "bedrock" / "bridge.mjs"
-    return script if script.exists() else Path(os.environ.get("MCCLI_BEDROCK_BRIDGE", "/opt/mccli/bedrock/bridge.mjs"))
+def bedrock_dir() -> Path:
+    """The Node part (bridge.mjs, auth.mjs): next to the CLI in a checkout, or MCCLI_BEDROCK_NODE."""
+    here = Path(__file__).resolve().parent.parent.parent / "bedrock"
+    if (here / "bridge.mjs").exists():
+        return here
+    legacy = os.environ.get("MCCLI_BEDROCK_BRIDGE")  # the bridge script's path, from 1.8
+    return Path(os.environ.get("MCCLI_BEDROCK_NODE") or (Path(legacy).parent if legacy else "/opt/mccli/bedrock"))
 
 
-def bridge(target: str, name: str, offline: bool = False) -> int:
-    """Runs the LAN bridge (bedrock/bridge.mjs, Node) in the foreground until stopped. It joins the
-    server as the Xbox account signed in with `login` (MCCLI_BEDROCK_AUTH), unless `offline`."""
-    return subprocess.call(["node", str(_bridge_script()), "--target", target, "--name", name, *(["--offline"] if offline else [])])
+def node_env() -> dict:
+    """Node's fetch ignores HTTPS_PROXY unless told; the Microsoft sign-in goes through it when one is set."""
+    env = dict(os.environ)
+    if (env.get("HTTPS_PROXY") or env.get("https_proxy")) and "NODE_USE_ENV_PROXY" not in env:
+        env["NODE_USE_ENV_PROXY"] = "1"
+    return env
 
 
-def login() -> int:
-    """Signs the bridge in to Xbox once, into MCCLI_BEDROCK_AUTH: it prints a code to enter at
-    microsoft.com/link, and waits for the sign-in."""
-    if not os.environ.get("MCCLI_BEDROCK_AUTH"):
-        print(json.dumps({"success": False, "data": None, "error": {"message": "Set MCCLI_BEDROCK_AUTH to the folder that keeps the sign-in"}}))
-        return 1
-    return subprocess.call(["node", str(_bridge_script()), "--login"])
+def ensure_node_modules(folder: Path) -> None:
+    """Installs the bridge's packages once. SKIP_BUILD keeps raknet-native from building with cmake; its
+    postinstall links the prebuilt binary for this kernel instead."""
+    if (folder / "node_modules" / "bedrock-protocol").exists():
+        return
+    env = dict(os.environ, SKIP_BUILD="1")
+    subprocess.run(["npm", "ci", "--no-audit", "--no-fund"], cwd=str(folder), env=env, check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+
+def bridge_args(target: str, name: str, auth: str = "auto", auth_dir: str | None = None, account: str = "default",
+                control: str = "127.0.0.1:19150", version: str | None = None) -> list[str]:
+    if auth not in ("auto", "offline", "microsoft"):
+        raise ValueError("auth is auto, offline or microsoft")
+    args = ["--target", target, "--name", name, "--auth", auth, "--account", account, "--control", control]
+    if auth_dir:
+        args += ["--auth-dir", auth_dir]
+    if version:
+        args += ["--version", version]
+    return args
+
+
+def bridge(target: str, name: str, auth: str = "auto", auth_dir: str | None = None, account: str = "default",
+           control: str = "127.0.0.1:19150", version: str | None = None) -> int:
+    """Runs the LAN bridge (bedrock/bridge.mjs, Node) in the foreground until stopped. Its JSON lines say when
+    it listens, when a client joins and, with --auth microsoft, the device code to sign in with."""
+    folder = bedrock_dir()
+    ensure_node_modules(folder)
+    return subprocess.call(["node", str(folder / "bridge.mjs"), *bridge_args(target, name, auth, auth_dir, account, control, version)], env=node_env())
+
+
+def auth(action: str, auth_dir: str | None = None, account: str = "default") -> int:
+    """Microsoft sign-in for the bridge (and minecraft-mcp-server's Bedrock bot, when it shares the folder):
+    login prints the device code, then the result, as JSON lines; status and logout one line."""
+    folder = bedrock_dir()
+    ensure_node_modules(folder)
+    args = ["node", str(folder / "auth.mjs"), action, "--account", account]
+    if auth_dir:
+        args += ["--dir", auth_dir]
+    return subprocess.call(args, env=node_env())
+
+
+def _bridge_url(url: str | None) -> str:
+    return (url or os.environ.get("MCCLI_BEDROCK_BRIDGE_URL") or "http://127.0.0.1:19150").rstrip("/")
+
+
+def bridge_api(path: str, url: str | None = None, body: dict | None = None, timeout: float = 5.0) -> dict:
+    """A call to the bridge's control API; the token comes from MCCLI_BEDROCK_BRIDGE_TOKEN."""
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(_bridge_url(url) + path, method="POST" if body is not None else "GET",
+                                 data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"content-type": "application/json"})
+    token = os.environ.get("MCCLI_BEDROCK_BRIDGE_TOKEN")
+    if token:
+        req.add_header("authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as res:
+            return json.loads(res.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            detail = json.loads(e.read().decode()).get("error")
+        except ValueError:
+            detail = e.reason
+        raise RuntimeError(f"The bridge answered {e.code}: {detail}") from None
+    except (urllib.error.URLError, TimeoutError) as e:
+        raise RuntimeError(f"No bridge at {_bridge_url(url)} ({getattr(e, 'reason', e)}): start it with `mccli bedrock bridge`") from None
+
+
+def _query(**params) -> str:
+    from urllib.parse import urlencode
+    given = {k: v for k, v in params.items() if v is not None}
+    return f"?{urlencode(given)}" if given else ""
 
 
 def add_parser(sub) -> None:
@@ -431,16 +510,54 @@ def add_parser(sub) -> None:
     bridge_p = act.add_parser("bridge", help="Show a server to clients on this network as a LAN world (Node)")
     bridge_p.add_argument("--target", required=True, help="The server: host:port (RakNet: any Bedrock server, Geyser, or a dedicated server)")
     bridge_p.add_argument("--name", default="mccli test server", help="The LAN world's name")
+    bridge_p.add_argument("--auth", choices=["auto", "offline", "microsoft"], default="auto",
+                          help="The server side: auto (signed in when `login` was done, else offline), offline, or microsoft")
     bridge_p.add_argument("--offline", action="store_true", help="Join as an offline player, not as the signed-in Xbox account")
-    act.add_parser("login", help="Sign the bridge in to Xbox once (MCCLI_BEDROCK_AUTH), for servers that ask for an account")
+    bridge_p.add_argument("--auth-dir", help="Token folder (default MCCLI_BEDROCK_AUTH or ~/.cache/mccli-bedrock/auth)")
+    bridge_p.add_argument("--account", default="default", help="Which signed-in account to use")
+    bridge_p.add_argument("--control", default="127.0.0.1:19150", help="The control API's host:port, or off")
+    bridge_p.add_argument("--version", help="Bedrock protocol version (default 1.26.60)")
+    for name, text in (("login", "Sign the bridge in to Xbox once (device code), so it joins servers that ask for an account"),
+                       ("auth-status", "Whether the account is signed in; never asks"),
+                       ("logout", "Remove the account's tokens")):
+        a = act.add_parser(name, help=text)
+        a.add_argument("--auth-dir")
+        a.add_argument("--account", default="default")
+    for name, text in (("bridge-status", "The bridge: listening, auth, sign-in code when one is pending, its clients"),
+                       ("state", "What the bridge sees of a client's game: position, health, inventory, forms, tab list"),
+                       ("forms", "The forms the server opened for a client"),
+                       ("bridge-chat", "Chat a client received, from the bridge")):
+        a = act.add_parser(name, help=text)
+        a.add_argument("--bridge", help="Control API URL (default MCCLI_BEDROCK_BRIDGE_URL or http://127.0.0.1:19150)")
+        a.add_argument("--player", help="The client's player name (default: the newest online one)")
+        if name == "bridge-chat":
+            a.add_argument("--since", type=int, default=0)
+            a.add_argument("--limit", type=int, default=50)
+    form_p = act.add_parser("form-respond", help="Answer a form for the client (a button index, true/false or values)")
+    form_p.add_argument("id", type=int)
+    form_p.add_argument("response", nargs="?", help="JSON: 0, true, [\"text\", 3]; leave out to close the form")
+    form_p.add_argument("--bridge")
+    form_p.add_argument("--player")
 
 
 def run(args) -> int:
     try:
         if args.action == "bridge":
-            return bridge(args.target, args.name, args.offline)
-        if args.action == "login":
-            return login()
+            mode = "offline" if getattr(args, "offline", False) else args.auth
+            return bridge(args.target, args.name, mode, args.auth_dir, args.account, args.control, args.version)
+        if args.action in ("login", "auth-status", "logout"):
+            return auth({"auth-status": "status"}.get(args.action, args.action), args.auth_dir, args.account)
+        if args.action == "form-respond":
+            response = json.loads(args.response) if args.response is not None else None
+            result = bridge_api("/form", args.bridge, {"player": args.player, "id": args.id, "response": response})
+            print(json.dumps({"success": True, "data": result, "error": None}))
+            return 0
+        if args.action in ("bridge-status", "state", "forms", "bridge-chat"):
+            path = {"bridge-status": "/status", "state": "/state", "forms": "/forms", "bridge-chat": "/chat"}[args.action]
+            extra = {"since": args.since, "limit": args.limit} if args.action == "bridge-chat" else {}
+            player = None if args.action == "bridge-status" else args.player
+            print(json.dumps({"success": True, "data": bridge_api(path + _query(player=player, **extra), args.bridge), "error": None}))
+            return 0
         result = {
             "launch": lambda: launch(args.version, args.width, args.height, args.wait),
             "status": status,
