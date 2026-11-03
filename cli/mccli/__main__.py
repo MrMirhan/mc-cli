@@ -46,6 +46,7 @@ from pathlib import Path
 from .client import Client
 from .analysis import analyze, compare, analyze_directory
 from .registry import list_instances, resolve_connection
+from . import bedrock
 
 
 def output(data, as_json: bool):
@@ -1167,6 +1168,8 @@ def main():
     sub = parser.add_subparsers(dest="command", help="Commands")
 
     # instances
+    bedrock.add_parser(sub)
+
     instances_p = sub.add_parser("instances", help="List registered MC-CLI instances")
     instances_p.add_argument("--all", "-a", action="store_true", help="Include dead instances")
 
@@ -1344,6 +1347,7 @@ def main():
         return 1
 
     commands = {
+        "bedrock": bedrock.run,
         "instances": cmd_instances,
         "status": cmd_status,
         "shader": cmd_shader,
