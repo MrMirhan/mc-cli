@@ -45,6 +45,7 @@ public class WindowCommand implements Command {
             case "close_screen" -> handleCloseScreen();
             case "hide" -> handleHide();
             case "show" -> handleShow();
+            case "size" -> handleSize(params);
             case "status" -> handleStatus();
             default -> {
                 CompletableFuture<JsonObject> future = new CompletableFuture<>();
@@ -164,6 +165,23 @@ public class WindowCommand implements Command {
     private CompletableFuture<JsonObject> handleHide() {
         return MainThreadExecutor.submit(() -> {
             HeadlessMode.hide(Minecraft.getInstance());
+            return buildStatus(Minecraft.getInstance());
+        });
+    }
+
+    /**
+     * Set the headless frame size: width and height in pixels (64-16384). The next frames, recordings, screenshots and
+     * the live preview have that size. Response: same fields as {@code status}.
+     */
+    private CompletableFuture<JsonObject> handleSize(JsonObject params) {
+        if (!params.has("width") || !params.has("height")) {
+            CompletableFuture<JsonObject> f = new CompletableFuture<>();
+            f.completeExceptionally(new IllegalArgumentException("width and height are required"));
+            return f;
+        }
+        int w = params.get("width").getAsInt(), h = params.get("height").getAsInt();
+        return MainThreadExecutor.submit(() -> {
+            HeadlessMode.setSize(Minecraft.getInstance(), w, h);
             return buildStatus(Minecraft.getInstance());
         });
     }

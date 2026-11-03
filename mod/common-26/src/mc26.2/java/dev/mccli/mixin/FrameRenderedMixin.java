@@ -13,5 +13,6 @@ public abstract class FrameRenderedMixin {
     @Inject(method = "renderFrame", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GameRenderer;render(Lnet/minecraft/client/DeltaTracker;Z)V", shift = At.Shift.AFTER))
     private void mccli$frameRendered(boolean advanceGameTime, CallbackInfo ci) {
         Recorder.INSTANCE.onFrame();
+        dev.mccli.video.Preview.INSTANCE.onFrame();
     }
 }

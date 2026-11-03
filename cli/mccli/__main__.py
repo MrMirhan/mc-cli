@@ -954,6 +954,16 @@ def cmd_window(args):
                 else:
                     print_window_status(data)
 
+            elif args.action == "size":
+                if args.width is None or args.height is None:
+                    print("Error: --width and --height required for 'size' action")
+                    return 1
+                data = mc.window_size(args.width, args.height)
+                if args.json:
+                    output(data, True)
+                else:
+                    print_window_status(data)
+
             elif args.action == "close_screen":
                 data = mc.window_close_screen()
                 if args.json:
@@ -1301,8 +1311,10 @@ def main():
     # window
     window_p = sub.add_parser("window", help="Window management (focus control for headless operation)")
     window_p.add_argument("action", choices=["focus_grab", "pause_on_lost_focus", "focus", "close_screen", "status",
-                                             "hide", "show"],
+                                             "hide", "show", "size"],
                           help="Window action")
+    window_p.add_argument("--width", type=int, default=None, help="Headless frame width (size)")
+    window_p.add_argument("--height", type=int, default=None, help="Headless frame height (size)")
     window_p.add_argument("--enabled", type=lambda x: x.lower() in ('true', '1', 'yes'),
                           default=None, help="Enable/disable setting (true/false)")
 

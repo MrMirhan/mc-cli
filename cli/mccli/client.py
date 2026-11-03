@@ -883,6 +883,16 @@ class Client:
         """
         return self.command("window", {"action": "hide"})
 
+    def window_size(self, width: int, height: int) -> dict:
+        """
+        Set the headless frame size in pixels (requires mod 1.9.0+): frames, recordings, screenshots and the live
+        preview take that size, without a restart.
+
+        Returns:
+            dict with the same fields as window_status()
+        """
+        return self.command("window", {"action": "size", "width": width, "height": height})
+
     def window_show(self) -> dict:
         """
         Show the game window and leave headless mode (requires mod 1.6.0+).

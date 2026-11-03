@@ -57,6 +57,7 @@ public final class McpServer {
             return;
         }
         http.createContext("/mcp", this::handle);
+        http.createContext("/live", this::live);
         http.setExecutor(Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r, "MC-CLI-MCP");
             t.setDaemon(true);
@@ -69,6 +70,54 @@ public final class McpServer {
 
     public void stop() {
         if (http != null) http.stop(0);
+    }
+
+    /**
+     * GET /live?fps=10&width=640: a small MJPEG preview of the game frame (see {@link dev.mccli.video.Preview}), for a
+     * person watching the camera. Same token as /mcp; it also works headless and next to a recording.
+     */
+    private void live(HttpExchange ex) throws IOException {
+        try (ex) {
+            String origin = ex.getRequestHeaders().getFirst("Origin");
+            if (origin != null && !localOrigin(origin)) {
+                ex.sendResponseHeaders(403, -1);
+                return;
+            }
+            String auth = ex.getRequestHeaders().getFirst("Authorization");
+            String token = auth != null && auth.startsWith("Bearer ") ? auth.substring(7).trim() : ex.getRequestHeaders().getFirst("X-MCCLI-Token");
+            if (!ControlRuntime.authorized(token)) {
+                ex.sendResponseHeaders(401, -1);
+                return;
+            }
+            if (!"GET".equals(ex.getRequestMethod())) {
+                ex.getResponseHeaders().add("Allow", "GET");
+                ex.sendResponseHeaders(405, -1);
+                return;
+            }
+            int fps = 10, width = 640;
+            String q = ex.getRequestURI().getRawQuery();
+            if (q != null) {
+                for (String kv : q.split("&")) {
+                    String[] p = kv.split("=", 2);
+                    try {
+                        if (p.length == 2 && p[0].equals("fps")) fps = Integer.parseInt(p[1]);
+                        if (p.length == 2 && p[0].equals("width")) width = Integer.parseInt(p[1]);
+                    } catch (NumberFormatException ignored) {
+                        // keep the default
+                    }
+                }
+            }
+            ex.getResponseHeaders().add("Content-Type", "multipart/x-mixed-replace; boundary=ffmpeg");
+            ex.getResponseHeaders().add("Cache-Control", "no-store");
+            ex.sendResponseHeaders(200, 0);
+            try {
+                if (!dev.mccli.video.Preview.INSTANCE.serve(ex.getResponseBody(), fps, width)) {
+                    McCliMod.LOGGER.warn("MC-CLI preview refused a viewer (too many, or ffmpeg is missing)");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     private void handle(HttpExchange ex) throws IOException {

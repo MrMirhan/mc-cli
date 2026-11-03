@@ -1303,6 +1303,18 @@ mccli window hide
 
 The response has the same fields as `window status`.
 
+### window size
+
+Set the headless frame size at runtime (MC-CLI 1.9.0+): `width` and `height` in pixels, 64-16384 each. Frames,
+recordings, screenshots and the live preview take that size at once; a visible window keeps its own size until the
+next `window hide`.
+
+```bash
+mccli window size --width 1080 --height 1920
+```
+
+The response has the same fields as `window status`.
+
 ### window show
 
 Show and raise the window and leave headless mode: focus grab is re-enabled, pause-on-lost-focus is honoured
