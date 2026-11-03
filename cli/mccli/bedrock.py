@@ -179,7 +179,13 @@ def launch(version: str | None = None, width: int = WIDTH, height: int = HEIGHT,
         raise RuntimeError(f"The client stopped (exit {proc.returncode}); see {_state() / 'client.log'}")
     time.sleep(3)
     popups = close_popups()
+    # The window can go for a moment as the client settles (after its error popup closes, for one).
     win = window()
+    for _ in range(15):
+        if win or proc.poll() is not None:
+            break
+        time.sleep(1)
+        win = window()
     if not win:
         # Without its licence the client runs on, but never opens the game's window.
         quit_client()
