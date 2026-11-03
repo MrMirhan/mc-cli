@@ -367,6 +367,7 @@ def add_parser(sub) -> None:
     chat_p.add_argument("message")
     lan_p = act.add_parser("join-lan", help="From the title screen, join the LAN world (the bridge's)")
     lan_p.add_argument("--index", type=int, default=0)
+    lan_p.add_argument("--wait", type=float, default=45.0, help="Seconds to wait for the world to load (at most 60)")
     act.add_parser("quit", help="Stop the client")
     logs_p = act.add_parser("logs", help="The client's log")
     logs_p.add_argument("--lines", type=int, default=50)
@@ -388,7 +389,7 @@ def run(args) -> int:
             "type": lambda: type_text(args.text),
             "scroll": lambda: scroll(args.direction, args.amount),
             "chat": lambda: chat(args.message),
-            "join-lan": lambda: join_lan(args.index),
+            "join-lan": lambda: join_lan(args.index, args.wait),
             "quit": quit_client,
             "logs": lambda: logs(args.lines),
         }[args.action]()

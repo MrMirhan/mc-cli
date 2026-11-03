@@ -36,7 +36,7 @@ All of them print one JSON object: `{"success", "data", "error"}`.
 | `mccli bedrock type TEXT` | Types text into the box in focus. |
 | `mccli bedrock scroll up\|down [--amount N]` | Turns the mouse wheel. |
 | `mccli bedrock chat MESSAGE` | Says a message in chat, or runs a `/command`, from the game view. |
-| `mccli bedrock join-lan [--index N]` | From the title screen: Play, then the LAN world at that place (the bridge's). On the way it closes the client's sign-in and Marketplace offers, and takes the server's resource packs (Download Everything & Join). Only at the default 1280 × 720 size. |
+| `mccli bedrock join-lan [--index N] [--wait S]` | From the title screen: Play, then the LAN world at that place (the bridge's). On the way it closes the client's sign-in and Marketplace offers, and takes the server's resource packs (Download Everything & Join). Only at the default 1280 × 720 size. |
 | `mccli bedrock logs [--lines N]` | The client's log. |
 | `mccli bedrock quit` | Stops the client. |
 | `mccli bedrock bridge --target HOST:PORT [--name NAME]` | Runs the LAN bridge (below), until stopped. |
