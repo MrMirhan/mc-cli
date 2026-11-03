@@ -17,7 +17,7 @@ Nothing secret is in the code. These paths are set at run time:
 | Variable | What it is | Default |
 | --- | --- | --- |
 | `MCCLI_BEDROCK_GAME` | The launcher's data folder, with `versions/<version>/` and `mods/mcpelauncher-updates/<mod>/x86_64/` | `~/.local/share/mcpelauncher` |
-| `MCCLI_BEDROCK_CREDENTIALS` | A folder laid out like a home folder, with the launcher's licence and sign-in files (`.local/share/mcpelauncher/pass.token`, `playapi_cache.dat`, `xal/`). `launch` copies each file into the home folder when it is missing there; a file already there stays, because the client renews it. | none |
+| `MCCLI_BEDROCK_CREDENTIALS` | A folder laid out like a home folder, with the launcher's licence and sign-in files (`.local/share/mcpelauncher/pass.token`, `playapi_cache.dat`, `xal/`) and the game's first-run state (`games/com.mojang/ud*.dat`, `games/com.mojang/minecraftpe/options.txt`, `storage_object`, `clientId.txt`, `hs.hex`), copied from a client that ran once. `launch` copies each file into the home folder when it is missing there; a file already there stays, because the client renews it. Without the first-run state, a new home starts at the client's first-run screens. | none |
 | `MCCLI_BEDROCK_STATE` | Where the running client's pid, log and screenshots go | `~/.cache/mccli-bedrock` |
 
 Keep the credentials folder private (mode 0700). Never commit it.
@@ -36,7 +36,7 @@ All of them print one JSON object: `{"success", "data", "error"}`.
 | `mccli bedrock type TEXT` | Types text into the box in focus. |
 | `mccli bedrock scroll up\|down [--amount N]` | Turns the mouse wheel. |
 | `mccli bedrock chat MESSAGE` | Says a message in chat, or runs a `/command`, from the game view. |
-| `mccli bedrock join-lan [--index N]` | From the title screen: Play, then the LAN world at that place (the bridge's). Only at the default 1280 × 720 size. |
+| `mccli bedrock join-lan [--index N]` | From the title screen: Play, then the LAN world at that place (the bridge's). On the way it closes the client's sign-in and Marketplace offers, and takes the server's resource packs (Download Everything & Join). Only at the default 1280 × 720 size. |
 | `mccli bedrock logs [--lines N]` | The client's log. |
 | `mccli bedrock quit` | Stops the client. |
 | `mccli bedrock bridge --target HOST:PORT [--name NAME]` | Runs the LAN bridge (below), until stopped. |
@@ -70,4 +70,4 @@ Run the bridge **on another host or container than the client**, on the network 
 
 On Docker, put the client and the bridge in the same user-defined bridge network, with inter-container traffic on.
 
-Checked with Minecraft 1.26.60.4 (launcher 1.8.7) and a dedicated server 1.26.61. The client joined through the bridge, with no Microsoft sign-in, and the server saw it spawn.
+Checked with Minecraft 1.26.60.4 (launcher 1.8.7) and a dedicated server 1.26.61. The client joined through the bridge, with no Microsoft sign-in, and the server saw it spawn. With a required resource pack on the server, the client downloaded it: its texture and a JSON UI label it adds to the HUD showed in the screenshot.
