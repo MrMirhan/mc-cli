@@ -76,6 +76,11 @@ pauses every command (`CONTROL_PAUSED`) until pressed again. `{"command": "contr
 
 ## MCP (26.x)
 
+A live preview is on the same port: `GET http://127.0.0.1:25590/live?fps=10&width=640` with the same bearer token
+streams MJPEG (`multipart/x-mixed-replace`) of the game frame, shrunk to `width` (160-1280, never larger than the
+frame) at `fps` (1-30). It reads the frame the game already drew, so it works headless, behind a lock screen and
+during a recording; it runs only while someone watches (up to three viewers share one stream) and needs ffmpeg.
+
 The game is also an MCP server: streamable HTTP with JSON responses at `http://127.0.0.1:25590/mcp`
 (`MCCLI_MCP_PORT`, `0` turns it off; `MCCLI_BIND` applies). Send `Authorization: Bearer <token>`. Requests with an
 `Origin` header other than localhost are refused, so a web page cannot drive the game. Every command is a tool with
