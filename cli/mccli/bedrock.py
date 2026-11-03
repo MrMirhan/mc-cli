@@ -349,12 +349,24 @@ def logs(lines: int = 50) -> dict:
     return {"lines": keep}
 
 
-def bridge(target: str, name: str) -> int:
-    """Runs the LAN bridge (bedrock/bridge.mjs, Node) in the foreground until stopped."""
+def _bridge_script() -> Path:
     script = Path(__file__).resolve().parent.parent.parent / "bedrock" / "bridge.mjs"
-    if not script.exists():
-        script = Path(os.environ.get("MCCLI_BEDROCK_BRIDGE", "/opt/mccli/bedrock/bridge.mjs"))
-    return subprocess.call(["node", str(script), "--target", target, "--name", name])
+    return script if script.exists() else Path(os.environ.get("MCCLI_BEDROCK_BRIDGE", "/opt/mccli/bedrock/bridge.mjs"))
+
+
+def bridge(target: str, name: str, offline: bool = False) -> int:
+    """Runs the LAN bridge (bedrock/bridge.mjs, Node) in the foreground until stopped. It joins the
+    server as the Xbox account signed in with `login` (MCCLI_BEDROCK_AUTH), unless `offline`."""
+    return subprocess.call(["node", str(_bridge_script()), "--target", target, "--name", name, *(["--offline"] if offline else [])])
+
+
+def login() -> int:
+    """Signs the bridge in to Xbox once, into MCCLI_BEDROCK_AUTH: it prints a code to enter at
+    microsoft.com/link, and waits for the sign-in."""
+    if not os.environ.get("MCCLI_BEDROCK_AUTH"):
+        print(json.dumps({"success": False, "data": None, "error": {"message": "Set MCCLI_BEDROCK_AUTH to the folder that keeps the sign-in"}}))
+        return 1
+    return subprocess.call(["node", str(_bridge_script()), "--login"])
 
 
 def add_parser(sub) -> None:
@@ -389,14 +401,18 @@ def add_parser(sub) -> None:
     logs_p = act.add_parser("logs", help="The client's log")
     logs_p.add_argument("--lines", type=int, default=50)
     bridge_p = act.add_parser("bridge", help="Show a server to clients on this network as a LAN world (Node)")
-    bridge_p.add_argument("--target", required=True, help="The server: host:port (RakNet; Geyser or a dedicated server)")
+    bridge_p.add_argument("--target", required=True, help="The server: host:port (RakNet: any Bedrock server, Geyser, or a dedicated server)")
     bridge_p.add_argument("--name", default="mccli test server", help="The LAN world's name")
+    bridge_p.add_argument("--offline", action="store_true", help="Join as an offline player, not as the signed-in Xbox account")
+    act.add_parser("login", help="Sign the bridge in to Xbox once (MCCLI_BEDROCK_AUTH), for servers that ask for an account")
 
 
 def run(args) -> int:
     try:
         if args.action == "bridge":
-            return bridge(args.target, args.name)
+            return bridge(args.target, args.name, args.offline)
+        if args.action == "login":
+            return login()
         result = {
             "launch": lambda: launch(args.version, args.width, args.height, args.wait),
             "status": status,
