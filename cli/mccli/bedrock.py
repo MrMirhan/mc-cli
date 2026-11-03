@@ -36,6 +36,12 @@ GREEN, LIGHT = (60, 133, 39), (208, 209, 212)
 PACK_GREEN, PACK_LIGHT = (33, 131, 6), (198, 198, 198)
 # The dialogs the client opens on its own, at the default size: how to know one (pixels and their
 # colours) and where to click: it closes the offers, and takes the server's resource packs.
+DARK = (15, 15, 10)
+# The "Connecting to multiplayer game" dialog and its Cancel button. The client's first connection to a
+# bridge sometimes stays there; a second one goes in.
+CONNECTING = [((600, 416), PACK_GREEN), ((680, 416), PACK_GREEN), ((400, 298), PACK_LIGHT), ((880, 298), PACK_LIGHT), ((400, 380), DARK), ((880, 380), DARK)]
+CANCEL = (639, 416)
+STUCK_AFTER = 12.0
 DIALOGS = [
     ("welcome sign-in", [((785, 463), GREEN), ((1215, 463), GREEN), ((785, 519), LIGHT), ((1215, 519), LIGHT)], (999, 519)),
     ("marketplace offer", [((320, 493), GREEN), ((960, 493), GREEN)], (977, 234)),
@@ -286,6 +292,11 @@ def pixel(png: str, x: int, y: int) -> tuple[int, int, int]:
     return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else (-1, -1, -1)
 
 
+def _matches(png: str, marks) -> bool:
+    """Whether the screenshot has each mark's colour at its place (within 30 of each channel)."""
+    return all(all(abs(a - b) <= 30 for a, b in zip(pixel(png, x, y), c)) for (x, y), c in marks)
+
+
 def dismiss(rounds: int = 3) -> list[str]:
     """Closes the dialogs the client opens on its own (the sign-in offer, the Marketplace offer), as it
     knows them at the default size; the ones it closed."""
@@ -295,8 +306,7 @@ def dismiss(rounds: int = 3) -> list[str]:
         shot = screenshot(str(_state() / "dismiss.png"))["path"]
         if (geometry(_window_or_fail())[2:]) != (WIDTH, HEIGHT):
             return closed
-        near = lambda got, want: all(abs(a - b) <= 30 for a, b in zip(got, want))
-        found = next((d for d in DIALOGS if all(near(pixel(shot, x, y), c) for (x, y), c in d[1])), None)
+        found = next((d for d in DIALOGS if _matches(shot, d[1])), None)
         if not found:
             return closed
         click(*found[2])
@@ -316,11 +326,29 @@ def join_lan(index: int = 0, wait: float = 45.0) -> dict:
     click(*PLAY_BUTTON)
     time.sleep(5)
     closed += dismiss()
-    click(FIRST_LAN_WORLD[0] + 300 * index, FIRST_LAN_WORLD[1])
+    world = (FIRST_LAN_WORLD[0] + 300 * index, FIRST_LAN_WORLD[1])
+    click(*world)
+    deadline = time.time() + min(wait, 60.0)
     time.sleep(8)
     closed += dismiss()  # the server's resource packs
-    time.sleep(min(wait, 60.0))
-    return {"joined": index, "closed": closed, **screenshot()}
+    retried, stuck = 0, None
+    while time.time() < deadline:
+        if _matches(screenshot(str(_state() / "join.png"))["path"], CONNECTING):
+            stuck = stuck or time.time()
+            if time.time() - stuck >= STUCK_AFTER and retried < 2:
+                # Cancel goes back to the worlds, where the bridge's world still is: join it again.
+                click(*CANCEL)
+                time.sleep(4)
+                click(*world)
+                retried, stuck = retried + 1, None
+                time.sleep(6)
+                closed += dismiss()
+                continue
+        else:
+            stuck = None
+            closed += dismiss()
+        time.sleep(3)
+    return {"joined": index, "closed": closed, "retried": retried, **screenshot()}
 
 
 def quit_client() -> dict:

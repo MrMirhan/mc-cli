@@ -69,6 +69,20 @@ class BedrockTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "shows no window: see .*client.log"):
                 bedrock.launch(wait=0)
 
+    def test_join_lan_cancels_a_connection_that_stays_at_connecting_and_joins_again(self):
+        now = [0.0]
+        clicks = []
+        clock = mock.Mock(time=lambda: now[0], sleep=lambda s: now.__setitem__(0, now[0] + s))
+        # The dialog stays for 20 seconds after the first click on the world, then the world loads.
+        connecting = lambda png, marks: marks is bedrock.CONNECTING and len([c for c in clicks if c == (178, 364)]) == 1 and now[0] < 30
+        with mock.patch.object(bedrock, "time", clock), mock.patch.object(bedrock, "_window_or_fail", return_value="42"), \
+             mock.patch.object(bedrock, "geometry", return_value=(0, 0, 1280, 720)), mock.patch.object(bedrock, "dismiss", return_value=[]), \
+             mock.patch.object(bedrock, "screenshot", return_value={"path": "x.png"}), mock.patch.object(bedrock, "_matches", side_effect=connecting), \
+             mock.patch.object(bedrock, "click", side_effect=lambda x, y, *a: clicks.append((x, y))):
+            result = bedrock.join_lan(0, wait=45)
+        self.assertEqual(result["retried"], 1)
+        self.assertEqual(clicks, [bedrock.PLAY_BUTTON, (178, 364), bedrock.CANCEL, (178, 364)])
+
     def test_a_click_outside_the_window_is_refused_and_one_inside_comes_slowly_at_its_screen_place(self):
         calls = []
         with mock.patch.object(bedrock, "window", return_value="42"), \
