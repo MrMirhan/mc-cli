@@ -36,8 +36,8 @@ public final class HeadlessMode {
     /** Whether headless mode was requested at startup. */
     private static final boolean REQUESTED = detect();
     private static final int FPS = intProperty("mccli.headless.fps", 30, 1, 1000);
-    private static final int WIDTH = intProperty("mccli.headless.width", 1280, 64, 16384);
-    private static final int HEIGHT = intProperty("mccli.headless.height", 720, 64, 16384);
+    private static volatile int WIDTH = intProperty("mccli.headless.width", 1280, 64, 16384);
+    private static volatile int HEIGHT = intProperty("mccli.headless.height", 720, 64, 16384);
 
     private static volatile boolean hidden = REQUESTED;
     private static volatile boolean muted = REQUESTED;
@@ -153,6 +153,19 @@ public final class HeadlessMode {
         ((WindowAccess) (Object) window).mccli$refreshFramebufferSize();
         client.framebufferSizeChanged();
         client.resizeGui();
+    }
+
+    /**
+     * Set the headless frame size at runtime (64-16384 per side), so each shot can have its own size without a restart.
+     * Applied at once while hidden; a visible window keeps its own size until the next hide. Must run on the main thread.
+     */
+    public static void setSize(Minecraft client, int width, int height) {
+        if (width < 64 || height < 64 || width > 16384 || height > 16384) {
+            throw new IllegalArgumentException("width and height must be 64-16384");
+        }
+        WIDTH = width;
+        HEIGHT = height;
+        if (isHidden()) applyFramebufferSize(client);
     }
 
     /** Hide the window and enter headless mode at runtime. Must run on the main thread. */
