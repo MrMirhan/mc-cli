@@ -75,5 +75,55 @@ class BedrockTest(unittest.TestCase):
         self.assertIn("start it with `mccli bedrock launch`", json.loads(out.getvalue())["error"]["message"])
 
 
+    def test_bridge_arguments_keep_offline_by_default_and_take_microsoft(self):
+        self.assertEqual(bedrock.bridge_args("h:19132", "T")[:6], ["--target", "h:19132", "--name", "T", "--auth", "offline"])
+        args = bedrock.bridge_args("h:19132", "T", "microsoft", "/tokens", "work", "off", "1.26.60")
+        self.assertEqual(args[args.index("--auth") + 1], "microsoft")
+        self.assertEqual(args[args.index("--auth-dir") + 1], "/tokens")
+        self.assertEqual(args[args.index("--account") + 1], "work")
+        self.assertEqual(args[args.index("--control") + 1], "off")
+        with self.assertRaisesRegex(ValueError, "offline or microsoft"):
+            bedrock.bridge_args("h:1", "T", "xbox")
+
+    def test_node_uses_the_https_proxy_when_one_is_set(self):
+        with mock.patch.dict(os.environ, {"HTTPS_PROXY": "http://proxy:3128"}, clear=False):
+            os.environ.pop("NODE_USE_ENV_PROXY", None)
+            self.assertEqual(bedrock.node_env()["NODE_USE_ENV_PROXY"], "1")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertNotIn("NODE_USE_ENV_PROXY", bedrock.node_env())
+
+    def test_bridge_queries_send_the_token_and_report_a_missing_bridge(self):
+        import http.server
+        import threading
+        seen = {}
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen["path"], seen["auth"] = self.path, self.headers.get("authorization")
+                body = json.dumps({"name": "Steve", "health": 20}).encode()
+                self.send_response(200)
+                self.send_header("content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}"
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, {"MCCLI_BEDROCK_BRIDGE_TOKEN": "t" * 20}), redirect_stdout(out):
+                code = bedrock.run(SimpleNamespace(action="state", bridge=url, player="Steve"))
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(out.getvalue())["data"]["health"], 20)
+            self.assertEqual(seen, {"path": "/state?player=Steve", "auth": "Bearer " + "t" * 20})
+        finally:
+            server.shutdown()
+        with self.assertRaisesRegex(RuntimeError, "No bridge at http://127.0.0.1:9"):
+            bedrock.bridge_api("/status", "http://127.0.0.1:9", timeout=1)
+
+
 if __name__ == "__main__":
     unittest.main()

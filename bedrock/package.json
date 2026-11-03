@@ -2,11 +2,18 @@
   "name": "mccli-bedrock-bridge",
   "version": "1.8.0",
   "private": true,
-  "description": "Shows a Bedrock server to Bedrock clients as a LAN world, and relays to it (mccli bedrock bridge).",
+  "description": "Shows a Bedrock server to Bedrock clients as a LAN world, relays to it offline or signed in with Microsoft, and serves what it sees (mccli bedrock bridge).",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "dependencies": {
-    "bedrock-protocol": "3.61.0"
+    "bedrock-protocol": "3.61.0",
+    "prismarine-auth": "3.1.1"
+  },
+  "scripts": {
+    "postinstall": "node fix-raknet.cjs",
+    "test": "node --test test/*.test.mjs"
   }
 }

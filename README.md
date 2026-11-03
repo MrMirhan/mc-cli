@@ -55,7 +55,7 @@ cd ../cli && pip install .
 
 ## Bedrock Edition
 
-`mccli bedrock` drives the real Bedrock client on Linux (mcpelauncher). It starts the client, takes screenshots of it, clicks, presses keys and types. It joins a server through `mccli bedrock bridge`, which shows the server to the client as a LAN world. See [docs/BEDROCK.md](docs/BEDROCK.md).
+`mccli bedrock` drives the real Bedrock client on Linux (mcpelauncher). It starts the client, takes screenshots of it, clicks, presses keys and types. It joins a server through `mccli bedrock bridge`, which shows the server to the client as a LAN world, reaches the server offline or signed in with Microsoft (`--auth microsoft`, `mccli bedrock login`), and serves what it sees of the client's game (`mccli bedrock state`). See [docs/BEDROCK.md](docs/BEDROCK.md).
 
 ## Quick Start
 
