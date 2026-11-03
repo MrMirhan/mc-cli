@@ -110,9 +110,10 @@ export function controlServer(bridge, token) {
 }
 
 export class Bridge {
-  constructor(opts, bedrock = require('bedrock-protocol')) {
+  constructor(opts, bedrock = require('bedrock-protocol'), auth = { status, login }) {
     this.opts = opts;
     this.bedrock = bedrock;
+    this.auth = auth;
     this.state = new BridgeState();
     this.clients = new Map();
     this.signIn = null;
@@ -134,17 +135,33 @@ export class Bridge {
     };
   }
 
-  /** With --auth microsoft: signs in first (a device code when there is no usable sign-in), so no client waits on it. */
-  async signInIfNeeded() {
+  /**
+   * With --auth microsoft: signs in first, so no client waits on it. Without a usable sign-in it shows a device
+   * code, and meanwhile watches the token folder: a sign-in made elsewhere into it (minecraft-mcp-server's
+   * bedrock-login, or `mccli bedrock login`) counts too.
+   */
+  async signInIfNeeded(pollMs = 5000) {
     if (this.opts.auth !== 'microsoft') return;
-    const before = await status(this.opts.authDir, this.opts.account);
-    if (!before.signedIn) {
-      const done = await login(this.opts.authDir, this.opts.account, (code) => {
+    const check = () => this.auth.status(this.opts.authDir, this.opts.account);
+    if (!(await check()).signedIn) {
+      let stop = false;
+      const own = this.auth.login(this.opts.authDir, this.opts.account, (code) => {
         this.signIn = code;
         print({ bridge: 'sign-in', account: this.opts.account, ...code });
-      });
+      }).then((done) => ({ by: 'code', xuid: done.xuid }));
+      const elsewhere = (async () => {
+        while (!stop) {
+          await new Promise((r) => setTimeout(r, pollMs));
+          if (!stop && (await check()).signedIn) return { by: 'token folder' };
+        }
+        return new Promise(() => {});
+      })();
+      // The losing flow keeps polling Microsoft until its code expires; its end is not news.
+      own.catch(() => {});
+      const done = await Promise.race([own, elsewhere]);
+      stop = true;
       this.signIn = null;
-      print({ bridge: 'signed-in', account: this.opts.account, xuid: done.xuid });
+      print({ bridge: 'signed-in', account: this.opts.account, ...done });
     }
     this.signedIn = true;
   }

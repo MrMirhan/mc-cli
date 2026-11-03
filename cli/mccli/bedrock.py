@@ -84,8 +84,15 @@ def _env() -> dict:
     return env
 
 
+NEEDS = {"xdotool": "xdotool", "xwininfo": "x11-utils", "import": "ImageMagick", "identify": "ImageMagick"}
+
+
 def _run(*args: str, check: bool = True) -> str:
-    return subprocess.run(list(args), capture_output=True, text=True, timeout=30, env=_env(), check=check).stdout
+    try:
+        return subprocess.run(list(args), capture_output=True, text=True, timeout=30, env=_env(), check=check).stdout
+    except FileNotFoundError:
+        raise RuntimeError(f"{args[0]} is not installed: the real Bedrock client needs {NEEDS.get(args[0], args[0])} "
+                           "(apt install xdotool x11-utils imagemagick) and an X display") from None
 
 
 def _pid() -> int | None:

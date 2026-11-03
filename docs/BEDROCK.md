@@ -74,7 +74,7 @@ mccli bedrock login                    # once, for --auth microsoft: enter the c
 mccli bedrock bridge --target play.example.net:19132 --auth microsoft
 ```
 
-With `--auth microsoft` and no sign-in yet, the bridge itself prints the device code (`{"bridge": "sign-in", "code": ...}`, also in `bridge-status`) and starts listening once the account is signed in, so no client waits on it.
+With `--auth microsoft` and no sign-in yet, the bridge itself prints the device code (`{"bridge": "sign-in", "code": ...}`, also in `bridge-status`) and starts listening once the account is signed in, so no client waits on it. Meanwhile it watches the token folder: a sign-in made there by `mccli bedrock login` or by minecraft-mcp-server's `bedrock-login` tool (an AI asks the person to enter the code) counts as well.
 
 **Tokens.** They live in `MCCLI_BEDROCK_AUTH` (default `~/.cache/mccli-bedrock/auth`), owner-only files named `<account>_<cache>-cache.json`. minecraft-mcp-server's Bedrock bot writes the same layout: point both at one folder and one sign-in serves both. Keep the folder private and out of git. Behind an HTTPS proxy, Node needs `NODE_USE_ENV_PROXY=1` (Node 22.21+); mccli sets it when `HTTPS_PROXY` is set.
 

@@ -61,3 +61,35 @@ test('the control API serves the state and answers a form for the client', async
     server.close();
   }
 });
+
+test('with microsoft, the bridge shows its code, and a sign-in made elsewhere into the token folder lets it go on', async () => {
+  let signedIn = false;
+  const shown = [];
+  const auth = {
+    status: async () => ({ signedIn }),
+    login: (_dir, _account, onCode) => { onCode({ code: 'XYZ', url: 'https://www.microsoft.com/link' }); return new Promise(() => {}); }
+  };
+  const bridge = new Bridge(parseArgs([...base, '--auth', 'microsoft']), {}, auth);
+  const log = console.log;
+  console.log = (line) => shown.push(JSON.parse(line));
+  try {
+    const waiting = bridge.signInIfNeeded(10);
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(bridge.status().signIn.code, 'XYZ');
+    assert.equal(bridge.status().signedIn, false);
+    signedIn = true;
+    await waiting;
+  } finally {
+    console.log = log;
+  }
+  assert.equal(bridge.signedIn, true);
+  assert.equal(bridge.status().signIn, undefined);
+  assert.deepEqual(shown.map((l) => l.bridge), ['sign-in', 'signed-in']);
+  assert.equal(shown[1].by, 'token folder');
+});
+
+test('offline needs no sign-in at all', async () => {
+  const bridge = new Bridge(parseArgs(base), {}, { status: async () => { throw new Error('not called'); }, login: async () => { throw new Error('not called'); } });
+  await bridge.signInIfNeeded(10);
+  assert.equal(bridge.signedIn, true);
+});

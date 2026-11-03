@@ -7,12 +7,17 @@ const os = require('os');
 const path = require('path');
 
 function fix(root) {
+  // Top level, or nested under bedrock-protocol when npm could not hoist it.
+  const paths = [root];
+  try { paths.push(path.dirname(require.resolve('bedrock-protocol/package.json', { paths: [root] }))); } catch { /* not installed */ }
   let dir;
-  try {
-    dir = path.join(path.dirname(require.resolve('raknet-native/package.json', { paths: [root] })), 'prebuilds');
-  } catch {
-    return 'raknet-native is not installed';
+  for (const from of paths) {
+    try {
+      dir = path.join(path.dirname(require.resolve('raknet-native/package.json', { paths: [from] })), 'prebuilds');
+      break;
+    } catch { /* try the next place */ }
   }
+  if (!dir) return 'raknet-native is not installed';
   const want = `${process.platform}-${os.release().split('.', 1)[0]}-${process.arch}`;
   if (fs.existsSync(path.join(dir, want, 'node-raknet.node'))) return `${want} is there`;
   const shipped = fs.readdirSync(dir).find((d) => {
