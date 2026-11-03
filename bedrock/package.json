@@ -1,0 +1,12 @@
+{
+  "name": "mccli-bedrock-bridge",
+  "version": "1.8.0",
+  "private": true,
+  "description": "Shows a Bedrock server to Bedrock clients as a LAN world, and relays to it (mccli bedrock bridge).",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=24" },
+  "dependencies": {
+    "bedrock-protocol": "3.61.0"
+  }
+}
