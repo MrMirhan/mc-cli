@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { cacheFor, cacheFiles, checkAccount, describeCode, logout, status } from '../auth.mjs';
+import { cacheFor, cacheFiles, checkAccount, describeCode, logout, prefixFor, status } from '../auth.mjs';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'mccli-auth-'));
 
@@ -29,4 +29,13 @@ test('an account name cannot leave the folder; no tokens means not signed in, wi
   assert.deepEqual(await status(tmp(), 'default'), { account: 'default', signedIn: false });
   assert.deepEqual(describeCode({ user_code: 'ABC', verification_uri: 'https://www.microsoft.com/link', expires_in: 900, message: 'm' }),
     { code: 'ABC', url: 'https://www.microsoft.com/link', link: 'https://microsoft.com/link?otc=ABC', expiresIn: 900, message: 'm' });
+});
+
+test('the default account keeps the file names of the first `mccli bedrock login`', async () => {
+  const dir = tmp();
+  // prismarine-auth's own name for the cache of the user "mccli-bridge"
+  assert.equal(prefixFor('default'), '1b83eb');
+  await cacheFor(dir)({ cacheName: 'live' }).setCached({ t: 1 });
+  assert.deepEqual(fs.readdirSync(dir), [`${prefixFor('default')}_live-cache.json`]);
+  assert.equal(prefixFor('work'), 'work');
 });

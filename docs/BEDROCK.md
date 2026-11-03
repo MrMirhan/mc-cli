@@ -10,15 +10,16 @@
 - **The launcher.** Install mcpelauncher (`mcpelauncher-manifest`, `mcpelauncher-ui-manifest` and `msa-manifest` from the minecraft-linux apt repository), `libatomic1`, xdotool, x11-utils (`xwininfo`) and ImageMagick (`import`).
 - **A display.** An X display (`DISPLAY`, default `:1`): a desktop, Xvnc or Xvfb.
 - **The game files, once.** The launcher downloads them for a Google account that owns Minecraft on Google Play. You also need its `mcpelauncher-updates` mod, which versions from 1.26 on need. After one start that you authorize, the client starts without the launcher and without a prompt.
-- **A Microsoft account is optional.** The client always joins the bridge offline; the bridge reaches the server offline, or signed in with a Microsoft account for online servers (below).
+- **A Microsoft account** is needed only for servers that ask for one (online-mode servers, featured servers): sign the bridge in once with `mccli bedrock login`, or from minecraft-mcp-server's `bedrock-login` tool. Servers that allow offline players need none. The client always joins the bridge offline.
 
 Nothing secret is in the code. These paths are set at run time:
 
 | Variable | What it is | Default |
 | --- | --- | --- |
 | `MCCLI_BEDROCK_GAME` | The launcher's data folder, with `versions/<version>/` and `mods/mcpelauncher-updates/<mod>/x86_64/` | `~/.local/share/mcpelauncher` |
-| `MCCLI_BEDROCK_CREDENTIALS` | A folder laid out like a home folder, with the launcher's licence and sign-in files (`.local/share/mcpelauncher/pass.token`, `playapi_cache.dat`, `xal/`). `launch` copies each file into the home folder when it is missing there; a file already there stays, because the client renews it. | none |
+| `MCCLI_BEDROCK_CREDENTIALS` | A folder laid out like a home folder, with the launcher's licence and sign-in files (`.local/share/mcpelauncher/pass.token`, `playapi_cache.dat`, `xal/`) and the game's first-run state (`games/com.mojang/ud*.dat`, `games/com.mojang/minecraftpe/options.txt`, `storage_object`, `clientId.txt`, `hs.hex`), copied from a client that ran once. `launch` copies each file into the home folder when it is missing there; a file already there stays, because the client renews it. Without the first-run state, a new home starts at the client's first-run screens. | none |
 | `MCCLI_BEDROCK_STATE` | Where the running client's pid, log and screenshots go | `~/.cache/mccli-bedrock` |
+| `MCCLI_BEDROCK_AUTH` | A folder, writable and kept between runs, where the bridge keeps its Xbox sign-in (`login`). With a sign-in there, the bridge joins servers as that account. | none |
 
 Keep the credentials folder private (mode 0700). Never commit it.
 
@@ -28,7 +29,7 @@ All of them print one JSON object: `{"success", "data", "error"}`.
 
 | Command | What it does |
 | --- | --- |
-| `mccli bedrock launch [--version V] [--width 1280 --height 720]` | Starts the client (the newest version there are files for) and waits for its window. Closes the launcher's error popups, such as a missing sound device. |
+| `mccli bedrock launch [--version V] [--width 1280 --height 720] [--wait S]` | Starts the client (the newest version there are files for) and waits for its window (90 seconds). Closes the launcher's error popups, such as a missing sound device. If no window opens, it stops the client and says why: without its licence, the client opens no window. |
 | `mccli bedrock status` | Whether it runs, its window and its place, and the versions there are. |
 | `mccli bedrock screenshot [--path P]` | A PNG of the client's window, as the player sees it. |
 | `mccli bedrock click X Y [--button left\|right] [--double]` | Clicks at X, Y of the window, in the screenshot's pixels. |
@@ -36,11 +37,11 @@ All of them print one JSON object: `{"success", "data", "error"}`.
 | `mccli bedrock type TEXT` | Types text into the box in focus. |
 | `mccli bedrock scroll up\|down [--amount N]` | Turns the mouse wheel. |
 | `mccli bedrock chat MESSAGE` | Says a message in chat, or runs a `/command`, from the game view. |
-| `mccli bedrock join-lan [--index N]` | From the title screen: Play, then the LAN world at that place (the bridge's). Only at the default 1280 × 720 size. |
+| `mccli bedrock join-lan [--index N] [--wait S]` | From the title screen: Play, then the LAN world at that place (the bridge's). On the way it closes the client's sign-in and Marketplace offers, and takes the server's resource packs (Download Everything & Join). The client's first connection to a bridge sometimes stays at "Connecting to multiplayer game": after 12 seconds there, it cancels and joins again (twice at most; `retried` says how many times). Only at the default 1280 × 720 size. |
 | `mccli bedrock logs [--lines N]` | The client's log. |
 | `mccli bedrock quit` | Stops the client. |
-| `mccli bedrock bridge --target HOST:PORT [--name NAME] [--auth offline\|microsoft] [--account A] [--control HOST:PORT\|off]` | Runs the LAN bridge (below), until stopped. |
-| `mccli bedrock login [--account A]` | Signs in with Microsoft for `--auth microsoft`: prints a device code to enter at microsoft.com/link, then waits. Once is enough; the tokens renew themselves. |
+| `mccli bedrock bridge --target HOST:PORT [--name NAME] [--offline] [--auth auto\|offline\|microsoft] [--account A] [--control HOST:PORT\|off]` | Runs the LAN bridge (below), until stopped. It joins the server as the signed-in Xbox account, or as an offline player with `--offline` or without a sign-in. |
+| `mccli bedrock login [--account A]` | Signs the bridge in to Xbox once: it prints a code to enter at microsoft.com/link, and waits. The sign-in stays in `MCCLI_BEDROCK_AUTH`; the bridge renews it. |
 | `mccli bedrock auth-status`, `logout` | Whether the account is signed in (never asks); removes its tokens. |
 | `mccli bedrock bridge-status` | The bridge: listening or not, its auth, a pending sign-in code, its clients. |
 | `mccli bedrock state [--player P]` | What the bridge sees of a client's game: world, position, dimension, game mode, health, inventory, title, tab list, nearby players, open forms. |
@@ -62,10 +63,13 @@ It does join a **LAN world** over NetherNet. So `mccli bedrock bridge` does this
 - It accepts the client over NetherNet (WebRTC).
 - It relays the game to the server over RakNet, with [bedrock-protocol](https://github.com/PrismarineJS/bedrock-protocol)'s Relay.
 
-The client's side is always offline. The server's side is chosen with `--auth`:
+The client joins the bridge offline. The server's side is chosen with `--auth`:
 
-- `offline` (default): the server must allow offline players: `online-mode=false` on a dedicated server, or Geyser with `auth-type: offline` or Floodgate.
-- `microsoft`: the bridge signs in with a Microsoft account and every client joins the server as that account, so online servers, Geyser with `auth-type: online` and Realms-style checks work. The account needs to own Bedrock for most servers.
+- `auto` (default): the bridge joins the server as the Xbox account signed in with `login`, so it joins any Bedrock server, featured servers too; without a sign-in it joins as an offline player.
+- `offline` (or `--offline`): the server must allow offline players (`online-mode=false` on a dedicated server, or Geyser with `auth-type: offline` or Floodgate).
+- `microsoft`: signed in, always; with no sign-in yet the bridge asks for one before it listens.
+
+An account plays in one place at a time: run one signed-in bridge per account (`--account` keeps several). If a sign-in is gone, the bridge writes a new code to its log and turns the player away.
 
 ```sh
 cd bedrock && SKIP_BUILD=1 npm ci     # once (mccli does this itself); no cmake: postinstall links raknet-native's prebuilt binary
@@ -76,7 +80,7 @@ mccli bedrock bridge --target play.example.net:19132 --auth microsoft
 
 With `--auth microsoft` and no sign-in yet, the bridge itself prints the device code (`{"bridge": "sign-in", "code": ...}`, also in `bridge-status`) and starts listening once the account is signed in, so no client waits on it. Meanwhile it watches the token folder: a sign-in made there by `mccli bedrock login` or by minecraft-mcp-server's `bedrock-login` tool (an AI asks the person to enter the code) counts as well.
 
-**Tokens.** They live in `MCCLI_BEDROCK_AUTH` (default `~/.cache/mccli-bedrock/auth`), owner-only files named `<account>_<cache>-cache.json`. minecraft-mcp-server's Bedrock bot writes the same layout: point both at one folder and one sign-in serves both. Keep the folder private and out of git. Behind an HTTPS proxy, Node needs `NODE_USE_ENV_PROXY=1` (Node 22.21+); mccli sets it when `HTTPS_PROXY` is set.
+**Tokens.** They live in `MCCLI_BEDROCK_AUTH` (default `~/.cache/mccli-bedrock/auth`), owner-only files named `<account>_<cache>-cache.json`; the default account keeps the names the first `mccli bedrock login` wrote (`1b83eb_<cache>-cache.json`), so a folder signed in before accounts existed still works. minecraft-mcp-server's Bedrock bot writes the same layout: point both at one folder and one sign-in serves both. Keep the folder private and out of git. Behind an HTTPS proxy, Node needs `NODE_USE_ENV_PROXY=1` (Node 22.21+); mccli sets it when `HTTPS_PROXY` is set.
 
 **The control API.** The bridge serves what it sees on `--control` (default `127.0.0.1:19150`): `GET /status`, `/state`, `/chat?since=N`, `/forms` (`?player=` picks a client; default the newest online one) and `POST /form {id, response}`. On an address other than loopback it needs `MCCLI_BEDROCK_BRIDGE_TOKEN` (16+ characters) and a `Bearer` header; the CLI sends it from the same variable and finds the bridge at `MCCLI_BEDROCK_BRIDGE_URL`.
 
@@ -87,8 +91,8 @@ Run the bridge **on another host or container than the client**, on the network 
 
 On Docker, put the client and the bridge in the same user-defined bridge network, with inter-container traffic on.
 
-Checked with Minecraft 1.26.60.4 (launcher 1.8.7) and a dedicated server 1.26.61. The client joined through the bridge, with no Microsoft sign-in, and the server saw it spawn.
+Checked with Minecraft 1.26.60.4 (launcher 1.8.7) and a dedicated server 1.26.61. The client joined through the bridge, with no Microsoft sign-in, and the server saw it spawn. With a required resource pack on the server, the client downloaded it: its texture and a JSON UI label it adds to the HUD showed in the screenshot.
 
-The bridge's state was checked against a dedicated server 1.26.61 (`transport=raknet`, offline) with a bedrock-protocol client joining over NetherNet LAN: position, dimension, game mode, health, the tab list, chat both ways, `/give` items by name and a title. With `--auth microsoft`, `mccli bedrock login` got a device code from Microsoft; joining an online server with a signed-in account was not tested here.
+The bridge's state was checked against a dedicated server 1.26.61 (`transport=raknet`, offline) with a bedrock-protocol client joining over NetherNet LAN: position, dimension, game mode, health, the tab list, chat both ways, `/give` items by name and a title. `mccli bedrock login` got a device code from Microsoft; joining an online server with a signed-in account was not tested here.
 
 A dedicated server from 1.26 on listens with `transport=nethernet` by default; the bridge speaks RakNet to the server, so set `transport=raknet` in its `server.properties`.

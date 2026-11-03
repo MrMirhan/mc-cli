@@ -5,18 +5,19 @@ import { Bridge, controlServer, parseArgs } from '../bridge.mjs';
 
 const base = ['--target', 'geyser.test:19132'];
 
-test('arguments: offline by default, microsoft on request, a control port or off', () => {
+test('arguments: auto by default, --offline or --auth to choose, a control port or off', () => {
   const o = parseArgs(base);
-  assert.equal(o.auth, 'offline');
+  assert.equal(o.auth, 'auto');
+  assert.equal(parseArgs([...base, '--offline']).auth, 'offline');
   assert.deepEqual(o.control, { host: '127.0.0.1', port: 19150 });
   assert.equal(parseArgs([...base, '--auth', 'microsoft', '--account', 'work']).account, 'work');
   assert.equal(parseArgs([...base, '--control', 'off']).control, null);
-  assert.throws(() => parseArgs([...base, '--auth', 'xbox']), /offline or microsoft/);
+  assert.throws(() => parseArgs([...base, '--auth', 'xbox']), /auto, offline or microsoft/);
   assert.throws(() => parseArgs([]), /--target/);
 });
 
 test('the client side stays offline; only the server side signs in, with one cached account', () => {
-  const offline = new Bridge(parseArgs(base), {}).relayOptions();
+  const offline = new Bridge(parseArgs([...base, '--offline']), {}).relayOptions();
   assert.equal(offline.offline, true);
   assert.equal(offline.destination.offline, true);
   assert.equal(offline.profilesFolder, undefined);
@@ -88,8 +89,16 @@ test('with microsoft, the bridge shows its code, and a sign-in made elsewhere in
   assert.equal(shown[1].by, 'token folder');
 });
 
+test('auto is online when the folder holds a sign-in, offline when not', async () => {
+  for (const signedIn of [true, false]) {
+    const bridge = new Bridge(parseArgs(base), {}, { status: async () => ({ signedIn }), login: async () => { throw new Error('not called'); } });
+    assert.equal(await bridge.resolveAuth(), signedIn ? 'microsoft' : 'offline');
+    assert.equal(bridge.relayOptions().destination.offline, !signedIn);
+  }
+});
+
 test('offline needs no sign-in at all', async () => {
-  const bridge = new Bridge(parseArgs(base), {}, { status: async () => { throw new Error('not called'); }, login: async () => { throw new Error('not called'); } });
+  const bridge = new Bridge(parseArgs([...base, '--offline']), {}, { status: async () => { throw new Error('not called'); }, login: async () => { throw new Error('not called'); } });
   await bridge.signInIfNeeded(10);
   assert.equal(bridge.signedIn, true);
 });

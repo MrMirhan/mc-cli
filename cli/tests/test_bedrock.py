@@ -53,6 +53,36 @@ class BedrockTest(unittest.TestCase):
             with mock.patch.object(bedrock, "_pid", return_value=None):
                 bedrock.launch("1.26.99")
 
+    def test_launch_without_a_window_stops_the_client_and_names_the_missing_licence(self):
+        (self.root / "game/versions/1.26.60.4/lib").mkdir(parents=True)
+        home = self.root / "home"
+        proc = mock.Mock(pid=7, poll=mock.Mock(return_value=None))
+        with mock.patch.object(bedrock, "HOME", home), mock.patch.object(bedrock, "_pid", return_value=None), \
+             mock.patch.object(bedrock, "clients", return_value=[]), mock.patch.object(bedrock, "window", return_value=None), \
+             mock.patch.object(bedrock, "close_popups", return_value=0), mock.patch.object(bedrock, "quit_client") as quit_client, \
+             mock.patch.object(bedrock.subprocess, "Popen", return_value=proc), mock.patch.object(bedrock.time, "sleep"):
+            with self.assertRaisesRegex(RuntimeError, "shows no window: it has no licence: set MCCLI_BEDROCK_CREDENTIALS"):
+                bedrock.launch(wait=0)
+            quit_client.assert_called_once()
+            (home / bedrock.LICENCE).parent.mkdir(parents=True)
+            (home / bedrock.LICENCE).write_text("licence")
+            with self.assertRaisesRegex(RuntimeError, "shows no window: see .*client.log"):
+                bedrock.launch(wait=0)
+
+    def test_join_lan_cancels_a_connection_that_stays_at_connecting_and_joins_again(self):
+        now = [0.0]
+        clicks = []
+        clock = mock.Mock(time=lambda: now[0], sleep=lambda s: now.__setitem__(0, now[0] + s))
+        # The dialog stays for 20 seconds after the first click on the world, then the world loads.
+        connecting = lambda png, marks: marks is bedrock.CONNECTING and len([c for c in clicks if c == (178, 364)]) == 1 and now[0] < 30
+        with mock.patch.object(bedrock, "time", clock), mock.patch.object(bedrock, "_window_or_fail", return_value="42"), \
+             mock.patch.object(bedrock, "geometry", return_value=(0, 0, 1280, 720)), mock.patch.object(bedrock, "dismiss", return_value=[]), \
+             mock.patch.object(bedrock, "screenshot", return_value={"path": "x.png"}), mock.patch.object(bedrock, "_matches", side_effect=connecting), \
+             mock.patch.object(bedrock, "click", side_effect=lambda x, y, *a: clicks.append((x, y))):
+            result = bedrock.join_lan(0, wait=45)
+        self.assertEqual(result["retried"], 1)
+        self.assertEqual(clicks, [bedrock.PLAY_BUTTON, (178, 364), bedrock.CANCEL, (178, 364)])
+
     def test_a_click_outside_the_window_is_refused_and_one_inside_comes_slowly_at_its_screen_place(self):
         calls = []
         with mock.patch.object(bedrock, "window", return_value="42"), \
@@ -75,14 +105,14 @@ class BedrockTest(unittest.TestCase):
         self.assertIn("start it with `mccli bedrock launch`", json.loads(out.getvalue())["error"]["message"])
 
 
-    def test_bridge_arguments_keep_offline_by_default_and_take_microsoft(self):
-        self.assertEqual(bedrock.bridge_args("h:19132", "T")[:6], ["--target", "h:19132", "--name", "T", "--auth", "offline"])
+    def test_bridge_arguments_are_auto_by_default_and_take_offline_or_microsoft(self):
+        self.assertEqual(bedrock.bridge_args("h:19132", "T")[:6], ["--target", "h:19132", "--name", "T", "--auth", "auto"])
         args = bedrock.bridge_args("h:19132", "T", "microsoft", "/tokens", "work", "off", "1.26.60")
         self.assertEqual(args[args.index("--auth") + 1], "microsoft")
         self.assertEqual(args[args.index("--auth-dir") + 1], "/tokens")
         self.assertEqual(args[args.index("--account") + 1], "work")
         self.assertEqual(args[args.index("--control") + 1], "off")
-        with self.assertRaisesRegex(ValueError, "offline or microsoft"):
+        with self.assertRaisesRegex(ValueError, "auto, offline or microsoft"):
             bedrock.bridge_args("h:1", "T", "xbox")
 
     def test_node_uses_the_https_proxy_when_one_is_set(self):

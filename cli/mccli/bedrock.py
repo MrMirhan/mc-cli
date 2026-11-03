@@ -25,12 +25,28 @@ import time
 from pathlib import Path
 
 HOME = Path.home()
+# The launcher's licence file in the home folder (from MCCLI_BEDROCK_CREDENTIALS).
+LICENCE = ".local/share/mcpelauncher/pass.token"
 DATA = HOME / ".local/share/mcpelauncher"
 WIDTH, HEIGHT = 1280, 720
 # Where the menus are, in the window's own pixels, at the default 1280 x 720 size.
 PLAY_BUTTON = (639, 372)
 FIRST_LAN_WORLD = (178, 364)
-POPUP_CLOSE = (977, 234)
+GREEN, LIGHT = (60, 133, 39), (208, 209, 212)
+PACK_GREEN, PACK_LIGHT = (33, 131, 6), (198, 198, 198)
+# The dialogs the client opens on its own, at the default size: how to know one (pixels and their
+# colours) and where to click: it closes the offers, and takes the server's resource packs.
+DARK = (15, 15, 10)
+# The "Connecting to multiplayer game" dialog and its Cancel button. The client's first connection to a
+# bridge sometimes stays there; a second one goes in.
+CONNECTING = [((600, 416), PACK_GREEN), ((680, 416), PACK_GREEN), ((400, 298), PACK_LIGHT), ((880, 298), PACK_LIGHT), ((400, 380), DARK), ((880, 380), DARK)]
+CANCEL = (639, 416)
+STUCK_AFTER = 12.0
+DIALOGS = [
+    ("welcome sign-in", [((785, 463), GREEN), ((1215, 463), GREEN), ((785, 519), LIGHT), ((1215, 519), LIGHT)], (999, 519)),
+    ("marketplace offer", [((320, 493), GREEN), ((960, 493), GREEN)], (977, 234)),
+    ("resource packs: download and join", [((360, 410), PACK_GREEN), ((920, 410), PACK_GREEN), ((360, 474), PACK_LIGHT), ((920, 474), PACK_LIGHT)], (639, 410)),
+]
 
 
 def _game() -> Path:
@@ -104,9 +120,24 @@ def _pid() -> int | None:
         return None
 
 
+def clients() -> list[int]:
+    """The pids of the Bedrock clients running here, ours or left from before."""
+    found = []
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            argv0 = (proc / "cmdline").read_bytes().split(b"\0")[0]
+        except OSError:
+            continue
+        if argv0.endswith(b"mcpelauncher-client") and int(proc.name) != os.getpid():
+            found.append(int(proc.name))
+    return found
+
+
 def window() -> str | None:
-    """The client's window id, when it shows one."""
-    out = _run("xdotool", "search", "--onlyvisible", "--name", "^Minecraft$", check=False).split()
+    """The client's window id, when it shows one: the window of the client mccli started."""
+    pid = _pid()
+    by_pid = ["--pid", str(pid)] if pid else []
+    out = _run("xdotool", "search", "--onlyvisible", *by_pid, "--name", "^Minecraft$", check=False).split()
     return out[0] if out else None
 
 
@@ -138,6 +169,8 @@ def launch(version: str | None = None, width: int = WIDTH, height: int = HEIGHT,
     """Starts the client, unless it runs; waits for its window."""
     if _pid() and window():
         return {"started": False, "running": True, "pid": _pid(), "window": window()}
+    if clients():
+        quit_client()  # a client left from before (its window is not ours to drive)
     found = versions()
     version = version or (found[0] if found else None)
     if not version or version not in found:
@@ -158,7 +191,21 @@ def launch(version: str | None = None, width: int = WIDTH, height: int = HEIGHT,
     if proc.poll() is not None:
         raise RuntimeError(f"The client stopped (exit {proc.returncode}); see {_state() / 'client.log'}")
     time.sleep(3)
-    return {"started": True, "running": True, "pid": proc.pid, "window": window(), "version": version, "copied": copied, "popups_closed": close_popups()}
+    popups = close_popups()
+    # The window can go for a moment as the client settles (after its error popup closes, for one).
+    win = window()
+    for _ in range(15):
+        if win or proc.poll() is not None:
+            break
+        time.sleep(1)
+        win = window()
+    if not win:
+        # Without its licence the client runs on, but never opens the game's window.
+        quit_client()
+        why = (f"it has no licence: set MCCLI_BEDROCK_CREDENTIALS to the folder with the launcher's licence files (docs/BEDROCK.md)"
+               if not (HOME / LICENCE).exists() else f"see {_state() / 'client.log'}")
+        raise RuntimeError(f"The client shows no window: {why}")
+    return {"started": True, "running": True, "pid": proc.pid, "window": win, "version": version, "copied": copied, "popups_closed": popups}
 
 
 def status() -> dict:
@@ -245,32 +292,89 @@ def chat(message: str) -> dict:
     return {"sent": message}
 
 
-def join_lan(index: int = 0, wait: float = 60.0) -> dict:
+def pixel(png: str, x: int, y: int) -> tuple[int, int, int]:
+    """The colour of one pixel of a PNG (ImageMagick)."""
+    out = _run("convert", png, "-crop", f"1x1+{x}+{y}", "txt:-")
+    m = re.search(r"\((\d+),(\d+),(\d+)", out.splitlines()[-1] if out else "")
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else (-1, -1, -1)
+
+
+def _matches(png: str, marks) -> bool:
+    """Whether the screenshot has each mark's colour at its place (within 30 of each channel)."""
+    return all(all(abs(a - b) <= 30 for a, b in zip(pixel(png, x, y), c)) for (x, y), c in marks)
+
+
+def dismiss(rounds: int = 3) -> list[str]:
+    """Closes the dialogs the client opens on its own (the sign-in offer, the Marketplace offer), as it
+    knows them at the default size; the ones it closed."""
+    closed = []
+    close_popups()
+    for _ in range(rounds):
+        shot = screenshot(str(_state() / "dismiss.png"))["path"]
+        if (geometry(_window_or_fail())[2:]) != (WIDTH, HEIGHT):
+            return closed
+        found = next((d for d in DIALOGS if _matches(shot, d[1])), None)
+        if not found:
+            return closed
+        click(*found[2])
+        closed.append(found[0])
+        time.sleep(2)
+    return closed
+
+
+def join_lan(index: int = 0, wait: float = 45.0) -> dict:
     """From the title screen: Play, then the LAN world at `index` (the bridge's), at the default size.
-    Says what the screen shows after; check it with a screenshot."""
+    Closes the dialogs it knows on the way. Says what the screen shows after; check it with a screenshot."""
     win = _window_or_fail()
     _, _, w, h = geometry(win)
     if (w, h) != (WIDTH, HEIGHT):
         raise RuntimeError(f"join_lan knows the menus at {WIDTH} x {HEIGHT}; the window is {w} x {h}: click your way with click and screenshot")
-    close_popups()
-    click(*POPUP_CLOSE)
-    time.sleep(1)
+    closed = dismiss()
     click(*PLAY_BUTTON)
     time.sleep(5)
-    click(FIRST_LAN_WORLD[0] + 300 * index, FIRST_LAN_WORLD[1])
-    time.sleep(min(wait, 60.0))
-    return {"joined": index, **screenshot()}
+    closed += dismiss()
+    world = (FIRST_LAN_WORLD[0] + 300 * index, FIRST_LAN_WORLD[1])
+    click(*world)
+    deadline = time.time() + min(wait, 60.0)
+    time.sleep(8)
+    closed += dismiss()  # the server's resource packs
+    retried, stuck = 0, None
+    while time.time() < deadline:
+        if _matches(screenshot(str(_state() / "join.png"))["path"], CONNECTING):
+            stuck = stuck or time.time()
+            if time.time() - stuck >= STUCK_AFTER and retried < 2:
+                # Cancel goes back to the worlds, where the bridge's world still is: join it again.
+                click(*CANCEL)
+                time.sleep(4)
+                click(*world)
+                retried, stuck = retried + 1, None
+                time.sleep(6)
+                closed += dismiss()
+                continue
+        else:
+            stuck = None
+            closed += dismiss()
+        time.sleep(3)
+    return {"joined": index, "closed": closed, "retried": retried, **screenshot()}
 
 
 def quit_client() -> dict:
-    pid = _pid()
-    if pid:
-        try:
-            os.killpg(pid, signal.SIGTERM)
-        except OSError:
-            os.kill(pid, signal.SIGTERM)
+    """Stops every Bedrock client here: asked first, then made to (the client may not stop when asked)."""
+    pids = clients()
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for pid in clients():
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                pass
+        deadline = time.time() + 5
+        while clients() and time.time() < deadline:
+            time.sleep(0.5)
+        if not clients():
+            break
     (_state() / "pid").unlink(missing_ok=True)
-    return {"stopped": bool(pid)}
+    close_popups()
+    return {"stopped": len(pids)}
 
 
 def logs(lines: int = 50) -> dict:
@@ -307,10 +411,10 @@ def ensure_node_modules(folder: Path) -> None:
                    stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 
-def bridge_args(target: str, name: str, auth: str = "offline", auth_dir: str | None = None, account: str = "default",
+def bridge_args(target: str, name: str, auth: str = "auto", auth_dir: str | None = None, account: str = "default",
                 control: str = "127.0.0.1:19150", version: str | None = None) -> list[str]:
-    if auth not in ("offline", "microsoft"):
-        raise ValueError("auth is offline or microsoft")
+    if auth not in ("auto", "offline", "microsoft"):
+        raise ValueError("auth is auto, offline or microsoft")
     args = ["--target", target, "--name", name, "--auth", auth, "--account", account, "--control", control]
     if auth_dir:
         args += ["--auth-dir", auth_dir]
@@ -319,7 +423,7 @@ def bridge_args(target: str, name: str, auth: str = "offline", auth_dir: str | N
     return args
 
 
-def bridge(target: str, name: str, auth: str = "offline", auth_dir: str | None = None, account: str = "default",
+def bridge(target: str, name: str, auth: str = "auto", auth_dir: str | None = None, account: str = "default",
            control: str = "127.0.0.1:19150", version: str | None = None) -> int:
     """Runs the LAN bridge (bedrock/bridge.mjs, Node) in the foreground until stopped. Its JSON lines say when
     it listens, when a client joins and, with --auth microsoft, the device code to sign in with."""
@@ -379,6 +483,7 @@ def add_parser(sub) -> None:
     launch_p.add_argument("--version", help="Game version (default: the newest there are files for)")
     launch_p.add_argument("--width", type=int, default=WIDTH)
     launch_p.add_argument("--height", type=int, default=HEIGHT)
+    launch_p.add_argument("--wait", type=float, default=90.0, help="Seconds to wait for its window")
     act.add_parser("status", help="Whether it runs, its window, the versions there are")
     shot_p = act.add_parser("screenshot", help="A PNG of the client's window")
     shot_p.add_argument("--path")
@@ -398,19 +503,21 @@ def add_parser(sub) -> None:
     chat_p.add_argument("message")
     lan_p = act.add_parser("join-lan", help="From the title screen, join the LAN world (the bridge's)")
     lan_p.add_argument("--index", type=int, default=0)
+    lan_p.add_argument("--wait", type=float, default=45.0, help="Seconds to wait for the world to load (at most 60)")
     act.add_parser("quit", help="Stop the client")
     logs_p = act.add_parser("logs", help="The client's log")
     logs_p.add_argument("--lines", type=int, default=50)
     bridge_p = act.add_parser("bridge", help="Show a server to clients on this network as a LAN world (Node)")
-    bridge_p.add_argument("--target", required=True, help="The server: host:port (RakNet; Geyser or a dedicated server)")
+    bridge_p.add_argument("--target", required=True, help="The server: host:port (RakNet: any Bedrock server, Geyser, or a dedicated server)")
     bridge_p.add_argument("--name", default="mccli test server", help="The LAN world's name")
-    bridge_p.add_argument("--auth", choices=["offline", "microsoft"], default="offline",
-                          help="The server side: offline (the server allows offline players) or signed in with Microsoft")
+    bridge_p.add_argument("--auth", choices=["auto", "offline", "microsoft"], default="auto",
+                          help="The server side: auto (signed in when `login` was done, else offline), offline, or microsoft")
+    bridge_p.add_argument("--offline", action="store_true", help="Join as an offline player, not as the signed-in Xbox account")
     bridge_p.add_argument("--auth-dir", help="Token folder (default MCCLI_BEDROCK_AUTH or ~/.cache/mccli-bedrock/auth)")
     bridge_p.add_argument("--account", default="default", help="Which signed-in account to use")
     bridge_p.add_argument("--control", default="127.0.0.1:19150", help="The control API's host:port, or off")
     bridge_p.add_argument("--version", help="Bedrock protocol version (default 1.26.60)")
-    for name, text in (("login", "Sign in with Microsoft (device code) for --auth microsoft"),
+    for name, text in (("login", "Sign the bridge in to Xbox once (device code), so it joins servers that ask for an account"),
                        ("auth-status", "Whether the account is signed in; never asks"),
                        ("logout", "Remove the account's tokens")):
         a = act.add_parser(name, help=text)
@@ -436,7 +543,8 @@ def add_parser(sub) -> None:
 def run(args) -> int:
     try:
         if args.action == "bridge":
-            return bridge(args.target, args.name, args.auth, args.auth_dir, args.account, args.control, args.version)
+            mode = "offline" if getattr(args, "offline", False) else args.auth
+            return bridge(args.target, args.name, mode, args.auth_dir, args.account, args.control, args.version)
         if args.action in ("login", "auth-status", "logout"):
             return auth({"auth-status": "status"}.get(args.action, args.action), args.auth_dir, args.account)
         if args.action == "form-respond":
@@ -451,7 +559,7 @@ def run(args) -> int:
             print(json.dumps({"success": True, "data": bridge_api(path + _query(player=player, **extra), args.bridge), "error": None}))
             return 0
         result = {
-            "launch": lambda: launch(args.version, args.width, args.height),
+            "launch": lambda: launch(args.version, args.width, args.height, args.wait),
             "status": status,
             "screenshot": lambda: screenshot(args.path),
             "click": lambda: click(args.x, args.y, args.button, args.double),
@@ -459,7 +567,7 @@ def run(args) -> int:
             "type": lambda: type_text(args.text),
             "scroll": lambda: scroll(args.direction, args.amount),
             "chat": lambda: chat(args.message),
-            "join-lan": lambda: join_lan(args.index),
+            "join-lan": lambda: join_lan(args.index, args.wait),
             "quit": quit_client,
             "logs": lambda: logs(args.lines),
         }[args.action]()

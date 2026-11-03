@@ -10,6 +10,7 @@
 //   node auth.mjs logout [--dir D] [--account A]   removes the account's cached tokens
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,13 +34,23 @@ export function checkAccount(account) {
   return account;
 }
 
+/**
+ * The file name prefix of an account's tokens. The default account keeps the name `mccli bedrock login`
+ * used first (prismarine-auth's hash of "mccli-bridge"), so a folder signed in before accounts existed
+ * still works; other accounts use their name.
+ */
+export function prefixFor(account = 'default') {
+  checkAccount(account);
+  return account === 'default' ? createHash('sha1').update('mccli-bridge', 'binary').digest('hex').slice(0, 6) : account;
+}
+
 /** prismarine-auth cache factory: the account's files, whatever player name the connection asks for. */
 export function cacheFor(dir, account = 'default') {
-  checkAccount(account);
+  const prefix = prefixFor(account);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   return ({ cacheName }) => {
     if (!CACHE_IDS.includes(cacheName)) throw new Error(`Unknown token cache '${cacheName}'`);
-    const file = path.join(dir, `${account}_${cacheName}-cache.json`);
+    const file = path.join(dir, `${prefix}_${cacheName}-cache.json`);
     const cache = new FileCache(file);
     // Tokens are secrets: owner-only files, whichever way the cache writes them.
     for (const method of ['setCached', 'reset']) {
@@ -51,8 +62,8 @@ export function cacheFor(dir, account = 'default') {
 }
 
 export function cacheFiles(dir, account = 'default') {
-  checkAccount(account);
-  return CACHE_IDS.map((id) => path.join(dir, `${account}_${id}-cache.json`)).filter((f) => fs.existsSync(f));
+  const prefix = prefixFor(account);
+  return CACHE_IDS.map((id) => path.join(dir, `${prefix}_${id}-cache.json`)).filter((f) => fs.existsSync(f));
 }
 
 /** A device code, as the caller shows it to the person. */

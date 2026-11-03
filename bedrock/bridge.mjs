@@ -6,9 +6,10 @@
 // It does join a LAN world over NetherNet. So the bridge advertises one on UDP 7551, accepts the
 // client over NetherNet (WebRTC), and relays to the server over RakNet.
 //
-// The client's side is always offline. The server's side is offline (the server must allow offline
-// players: online-mode=false, or Geyser's auth-type offline / Floodgate) or, with --auth microsoft, signed
-// in with a Microsoft account, so the client reaches online servers as that account.
+// The client's side is always offline. The server's side is signed in with a Microsoft (Xbox) account
+// when the token folder holds a sign-in (`mccli bedrock login`), so the client reaches online servers as
+// that account; otherwise, or with --offline, it is offline (the server must allow offline players:
+// online-mode=false, or Geyser's auth-type offline / Floodgate). --auth offline|microsoft chooses explicitly.
 //
 // The bridge must run on another host or container than the client, on the network of the client's
 // default route: the client broadcasts its LAN discovery there only, and a bridge on the client's
@@ -18,8 +19,9 @@
 // list) as JSON on a control port, loopback by default; another address needs a token in
 // MCCLI_BEDROCK_BRIDGE_TOKEN.
 //
-// Usage: node bridge.mjs --target host:port [--name "Test server"] [--version 1.26.60]
-//          [--auth offline|microsoft] [--auth-dir DIR] [--account NAME] [--control host:port|off]
+// Usage: node bridge.mjs --target host:port [--name "Test server"] [--version 1.26.60] [--offline]
+//          [--auth auto|offline|microsoft] [--auth-dir DIR] [--account NAME] [--control host:port|off]
+//        node bridge.mjs --login [--auth-dir DIR] [--account NAME]   signs in once (a code for microsoft.com/link)
 import { createRequire } from 'node:module';
 import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
@@ -37,8 +39,8 @@ export function parseArgs(argv) {
   };
   const target = arg('target');
   if (!target || !/^[^:\s]+:\d+$/.test(target)) throw new Error('--target host:port is required');
-  const auth = arg('auth', 'offline');
-  if (!['offline', 'microsoft'].includes(auth)) throw new Error('--auth is offline or microsoft');
+  const auth = argv.includes('--offline') ? 'offline' : arg('auth', 'auto');
+  if (!['auto', 'offline', 'microsoft'].includes(auth)) throw new Error('--auth is auto, offline or microsoft');
   const control = arg('control', '127.0.0.1:19150');
   if (control !== 'off' && !/^[^:\s]+:\d+$/.test(control)) throw new Error('--control is host:port or off');
   const [host, port] = target.split(':');
@@ -121,6 +123,15 @@ export class Bridge {
     this.listening = false;
   }
 
+  /** auto: signed in when the token folder holds a usable sign-in, offline otherwise. */
+  async resolveAuth() {
+    if (this.opts.auth !== 'auto') return this.opts.auth;
+    const { signedIn } = await this.auth.status(this.opts.authDir, this.opts.account);
+    this.opts.auth = signedIn ? 'microsoft' : 'offline';
+    this.signedIn = signedIn;
+    return this.opts.auth;
+  }
+
   status() {
     return {
       bridge: this.listening ? 'listening' : 'starting',
@@ -180,11 +191,12 @@ export class Bridge {
         ...AUTH_OPTIONS,
         // Every client goes out as the signed-in account, whatever name it joined with.
         profilesFolder: cacheFor(this.opts.authDir, this.opts.account),
-        onMsaCode: (code) => {
-          // Only when the cached sign-in expired and could not be renewed.
+        onMsaCode: (code, player) => {
+          // Only when the cached sign-in expired and could not be renewed: the code goes to the log, not the player.
           this.signIn = { code: code.user_code, url: code.verification_uri, expiresIn: code.expires_in, message: code.message };
           this.signedIn = false;
           print({ bridge: 'sign-in', account: this.opts.account, ...this.signIn });
+          try { player?.disconnect('The bridge needs an Xbox sign-in: see its log'); } catch { /* gone */ }
         }
       } : {})
     };
@@ -231,6 +243,7 @@ export class Bridge {
   }
 
   async start() {
+    await this.resolveAuth();
     await this.signInIfNeeded();
     this.relay = new this.bedrock.Relay(this.relayOptions());
     this.relay.on('connect', (player) => {
@@ -248,11 +261,24 @@ export class Bridge {
 }
 
 async function main() {
+  if (process.argv.includes('--login')) {
+    // The sign-in on its own, as `mccli bedrock login` runs it.
+    const argv = process.argv.slice(2);
+    const get = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback; };
+    try {
+      const done = await login(get('auth-dir', defaultDir()), get('account', 'default'), (code) => print({ login: 'needed', ...code }));
+      print({ login: 'done', ...done });
+      process.exit(0);
+    } catch (err) {
+      print({ login: 'failed', error: err instanceof Error ? err.message : String(err) });
+      process.exit(1);
+    }
+  }
   let opts;
   try {
     opts = parseArgs(process.argv.slice(2));
   } catch (err) {
-    console.error(`${err.message}\nUsage: node bridge.mjs --target host:port [--name "Test server"] [--version 1.26.60] [--auth offline|microsoft] [--auth-dir DIR] [--account NAME] [--control host:port|off]`);
+    console.error(`${err.message}\nUsage: node bridge.mjs --target host:port [--name "Test server"] [--version 1.26.60] [--offline] [--auth auto|offline|microsoft] [--auth-dir DIR] [--account NAME] [--control host:port|off]`);
     process.exit(2);
   }
   const bridge = new Bridge(opts);
