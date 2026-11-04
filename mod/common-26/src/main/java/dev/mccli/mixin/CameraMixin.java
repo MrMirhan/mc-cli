@@ -1,8 +1,10 @@
 package dev.mccli.mixin;
 
 import dev.mccli.camera.CameraOverride;
+import dev.mccli.pilot.Pilot;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
 import org.joml.Quaternionf;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -29,7 +31,14 @@ public abstract class CameraMixin {
     @Inject(method = "update", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Camera;alignWithEntity(F)V", shift = At.Shift.AFTER))
     private void mccli$applyOverride(DeltaTracker deltaTracker, CallbackInfo ci) {
         CameraOverride.Pose p = CameraOverride.INSTANCE.get();
-        if (p == null) return;
+        if (p == null) {
+            // the pilot turns the head per tick: give this frame its share of the turn (first person, own view only)
+            Minecraft mc = Minecraft.getInstance();
+            if (detached || mc.player == null || mc.getCameraEntity() != mc.player) return;
+            float[] view = Pilot.VIEW.at(deltaTracker.getGameTimeDeltaPartialTick(false));
+            if (view != null) setRotation(view[0], view[1]);
+            return;
+        }
         setPosition(p.x(), p.y(), p.z());
         setRotation(p.yaw(), p.pitch());
         Double roll = CameraOverride.INSTANCE.roll();

@@ -33,6 +33,8 @@ public final class Pilot {
 
     private record Step(int index, JsonObject json) {}
 
+    /** The camera's share of each tick's head turn, per rendered frame (see CameraMixin). */
+    public static final ViewSmoother VIEW = new ViewSmoother();
     private static final Deque<Step> queue = new ArrayDeque<>();
     private static Step current;
     private static PilotBrain brain;
@@ -126,8 +128,11 @@ public final class Pilot {
         }
         double dt = Math.max(0.001, (now - lastTick) / 1000.0);
         lastTick = now;
+        float fromYaw = player.getYRot(), fromPitch = player.getXRot();
         try {
-            if (step(mc, player, current.json(), now, dt)) finish(mc, null);
+            boolean complete = step(mc, player, current.json(), now, dt);
+            VIEW.tick(fromYaw, fromPitch, player.getYRot(), player.getXRot());
+            if (complete) finish(mc, null);
         } catch (RuntimeException e) {
             finish(mc, e.getMessage() == null ? e.toString() : e.getMessage());
         }
@@ -341,6 +346,7 @@ public final class Pilot {
     }
 
     private static void release(Minecraft mc) {
+        VIEW.clear();
         Options o = mc.options;
         if (o == null) return;
         for (KeyMapping k : new KeyMapping[] {o.keyUp, o.keyDown, o.keyLeft, o.keyRight, o.keyJump, o.keySprint, o.keyAttack, o.keyUse}) {
