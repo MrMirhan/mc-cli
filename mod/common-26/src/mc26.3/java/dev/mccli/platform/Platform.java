@@ -63,6 +63,19 @@ public final class Platform {
             com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM, com.mojang.renderpearl.api.GpuFormat.D32_FLOAT);
     }
 
+    /**
+     * The game's mouse button id for an API button (0 left, 1 right, 2 middle, 3+ extra buttons, GLFW numbering).
+     * SDL numbers buttons from 1 and puts middle before right, so a GLFW id sent as-is never reaches a widget.
+     */
+    public static int mouseButton(int apiButton) {
+        return switch (apiButton) {
+            case 0 -> com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT;
+            case 1 -> com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_RIGHT;
+            case 2 -> com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_MIDDLE;
+            default -> apiButton + 1;
+        };
+    }
+
     /** Move the cursor to window coordinates through the window's own cursor callback. */
     public static void moveCursor(Minecraft client, long windowHandle, double x, double y) {
         MouseHandler mouse = client.mouseHandler;

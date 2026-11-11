@@ -61,6 +61,11 @@ public final class Platform {
         return new com.mojang.blaze3d.pipeline.TextureTarget(name, width, height, true, com.mojang.blaze3d.GpuFormat.RGBA8_UNORM);
     }
 
+    /** The game's mouse button id for an API button (0 left, 1 right, 2 middle): GLFW ids, unchanged. */
+    public static int mouseButton(int apiButton) {
+        return apiButton;
+    }
+
     /** Move the cursor to window coordinates through the window's own cursor callback. */
     public static void moveCursor(Minecraft client, long windowHandle, double x, double y) {
         ((MouseMoveInvoker) client.mouseHandler).mccli$onMove(windowHandle, x, y);
