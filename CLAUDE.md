@@ -43,6 +43,9 @@ exact Minecraft version (`~26.3` / `[26.3]`), so publish one jar per Minecraft v
 - 26.3 only: windowing is SDL3 (`org.lwjgl.sdl`), GLFW is gone: `Window.handle()` is the `SDL_Window*`;
   focus uses `SDLVideo.SDL_RaiseWindow` / `SDL_ShowWindow` (26.2 still uses GLFW). Vanilla never raises the
   window itself in either version, so the focus-suppression mixins are `require = 0` safety nets.
+- 26.3 only: mouse buttons use SDL ids (left 1, middle 2, right 3; `InputConstants.MOUSE_BUTTON_*`), and widgets
+  accept only `MOUSE_BUTTON_LEFT`. The API keeps GLFW numbering (0 left, 1 right, 2 middle); convert with
+  `Platform.mouseButton` before building a `MouseButtonInfo`.
 - Screens live on `Minecraft.gui`: `client.gui.screen()` / `client.gui.setScreen()` (see `util/ClientCompat`)
 - F1 HUD toggle moved from `Options.hideGui` to `client.gui.hud.isHidden()` / `toggle()`
 - Day time comes from world clocks: `Level.getOverworldClockTime()` (`/time set <ticks>` still works)

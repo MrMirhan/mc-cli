@@ -103,7 +103,7 @@ public class InputCommand implements Command {
         int button = params.has("button") ? params.get("button").getAsInt() : LEFT_BUTTON;
         int modifiers = params.has("modifiers") ? params.get("modifiers").getAsInt() : 0;
         String mode = params.has("mode") ? params.get("mode").getAsString() : "click";
-        MouseButtonInfo info = new MouseButtonInfo(button, modifiers);
+        MouseButtonInfo info = new MouseButtonInfo(Platform.mouseButton(button), modifiers);
         MouseHandlerInvoker mouse = (MouseHandlerInvoker) client.mouseHandler;
         long handle = ClientCompat.windowHandle(client);
         String before = screenName(ClientCompat.screen(client));
